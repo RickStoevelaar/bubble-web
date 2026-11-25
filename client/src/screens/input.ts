@@ -93,3 +93,33 @@ export function installScoresInput(
     win.removeEventListener("keydown", onKey as Handler);
   };
 }
+
+const SKIP_KEYS = new Set(["Enter", "Escape", " ", "Spacebar"]);
+
+/**
+ * Ending screen: a tap or Enter/Escape/Space calls `onSkip` once, but only while `canSkip()` holds (the caller
+ * decides from the scene clock). Key repeat is ignored. Returns a disposer; nothing stays registered after it.
+ */
+export function installEndingSkip(target: EventTargetLike, canSkip: () => boolean, onSkip: () => void): () => void {
+  let done = false;
+  const fire = (): boolean => {
+    if (done || !canSkip()) return false;
+    done = true;
+    onSkip();
+    return true;
+  };
+  const onPointer = (e: { target?: unknown }): void => {
+    if (!fromControl(e)) fire();
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || !SKIP_KEYS.has(e.key)) return;
+    if (fire()) e.preventDefault();
+  };
+  target.addEventListener("pointerdown", onPointer as Handler);
+  target.addEventListener("keydown", onKey as Handler);
+  return () => {
+    done = true;
+    target.removeEventListener("pointerdown", onPointer as Handler);
+    target.removeEventListener("keydown", onKey as Handler);
+  };
+}

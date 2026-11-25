@@ -4,6 +4,7 @@ import { HERO_DEFS, ICON_DEFS } from "./sprites/heroes";
 import { CLASS_SIZE, type SpriteDef, type SpriteName } from "./sprites/names";
 import { powerDefs } from "./sprites/powers";
 import { PROJECTILE_DEFS } from "./sprites/projectiles";
+import { SCENE_DEFS } from "./sprites/scenes";
 import { bubbleDefs, doorDefs, itemDefs, tileDefs } from "./sprites/world";
 
 export * from "./sprites/names";
@@ -19,6 +20,7 @@ export const SPRITE_DEFS: Record<SpriteName, SpriteDef> = {
   ...itemDefs(),
   ...doorDefs(),
   ...powerDefs(),
+  ...SCENE_DEFS,
   ...tileDefs(),
   ...fontDefs(),
 };

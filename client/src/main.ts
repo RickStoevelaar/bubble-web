@@ -24,10 +24,12 @@ import { viewOf, type ShownError } from "./status";
 import { computeLayout } from "./render/layout";
 import { render } from "./render/renderer";
 import { buildSheet } from "./render/sprites";
-import { drawEnding, endingDone } from "./screens/ending";
+import { drawEnding, endingDone, endingKind } from "./screens/ending";
+import { CODE_START_TICKS, EndingClock, canSkip } from "./screens/ending-timeline";
+import { rememberSuperCode } from "./screens/super-code";
 import { Flow } from "./screens/flow";
 import { ContinuePrompt, GameOverPanel, drawGameOver } from "./screens/gameover";
-import { installScoresInput, installTitleStart, parseDevRound } from "./screens/input";
+import { installEndingSkip, installScoresInput, installTitleStart, parseDevRound } from "./screens/input";
 import { JoinForm } from "./screens/join-form";
 import type { Screen } from "./screens/machine";
 import { planScreenLayout } from "./screens/plan";
@@ -88,6 +90,9 @@ function boot(): void {
   let lastView: GameState | null = null;
   const seatNames: (string | undefined)[] = [undefined, undefined];
   let disposeScreen: (() => void) | null = null;
+  /** The ending scene clock: the server's endingTicks, or elapsed client time if that counter stalls. */
+  let endingClock = new EndingClock();
+  let endingTicksNow = 0;
 
   // Touch: the tracker/deck exist from boot so every layout recompute can re-zone them, but touches are only
   // handled on the game screen (the form, the buttons and the canvas screens must keep working).
@@ -284,6 +289,13 @@ function boot(): void {
         panel.show();
         break;
       case "ending":
+        endingClock = new EndingClock();
+        endingTicksNow = 0;
+        disposeScreen = installEndingSkip(
+          window,
+          () => lastView !== null && canSkip(endingTicksNow, endingKind(lastView)),
+          () => flow.go({ t: "endingDone" }),
+        );
         break;
       case "scores": {
         if (prev === "gameover" || prev === "ending") {
@@ -373,8 +385,12 @@ function boot(): void {
         break;
       case "ending":
         if (view) {
-          drawEnding(ctx, sheet, view, view.endingTicks);
-          if (endingDone(view.endingTicks)) flow.go({ t: "endingDone" });
+          const kind = endingKind(view);
+          endingTicksNow = endingClock.at(view.endingTicks, now);
+          drawEnding(ctx, sheet, view, endingTicksNow, kind);
+          // the code was on screen: keep it for the join form's hint (a convenience, never required)
+          if (kind === "true" && endingTicksNow >= CODE_START_TICKS) rememberSuperCode(localStore(), SUPER_CODE);
+          if (endingDone(endingTicksNow, kind)) flow.go({ t: "endingDone" });
         }
         break;
       case "scores":

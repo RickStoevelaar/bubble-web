@@ -1,3 +1,5 @@
+import { readSuperCode } from "./super-code";
+
 /** Minimal shapes of the DOM pieces the form touches, so tests can use plain fakes. */
 export interface InputLike {
   value: string;
@@ -98,6 +100,7 @@ export class JoinForm {
   /** Shows the form (optionally with an error line) and focuses the first empty field. */
   show(errorText: string | null = null): void {
     this.els.root.hidden = false;
+    this.updateHint(); // the code may have been remembered since the form was built
     this.setError(errorText);
     const e = this.els;
     (e.room.value === "" ? e.room : e.pin.value === "" ? e.pin : e.name.value === "" ? e.name : e.room).focus();
@@ -133,8 +136,10 @@ export class JoinForm {
 
   private updateHint(): void {
     const on = this.superCode !== "" && this.els.room.value.trim().toUpperCase() === this.superCode;
-    this.els.hint.hidden = !on;
-    this.els.hint.textContent = on ? SUPER_HINT : "";
+    const mine = readSuperCode(this.store, this.superCode); // remembered from the true ending (only ever the real code)
+    const text = [on ? SUPER_HINT : "", mine ? `your code: ${mine}` : ""].filter((t) => t !== "").join(" - ");
+    this.els.hint.hidden = text === "";
+    this.els.hint.textContent = text;
   }
 
   private load(): Saved {

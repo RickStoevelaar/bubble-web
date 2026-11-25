@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FIELD_H, FIELD_W } from "@bubble/shared";
 import { makeHarness } from "./harness";
 import { bigWidth, drawBig } from "../src/screens/bigtext";
-import { ENDING_CARD_TICKS, drawEnding, endingDone, endingKind } from "../src/screens/ending";
+
 import { drawGameOver } from "../src/screens/gameover";
 import {
   PER_PAGE,
@@ -243,36 +243,6 @@ describe("scores screen", () => {
   });
 });
 
-describe("ending placeholder (extension point for 23b)", () => {
-  it("picks the card kind from state.ending", () => {
-    expect(endingKind({ ending: "true" })).toBe("true");
-    expect(endingKind({ ending: "bad" })).toBe("bad");
-    expect(endingKind({ ending: null })).toBe("bad");
-  });
-
-  it("draws WELL DONE for the true ending and THE END for the bad one (big lettering plus a line of text)", () => {
-    const t = makeHarness();
-    drawEnding(t.ctx, t.sheet, { ending: "true" }, 0);
-    const b = makeHarness();
-    drawEnding(b.ctx, b.sheet, { ending: "bad" }, 0);
-    expect(text(t.main)).toBe("THANKSFORPLAYING!");
-    expect(text(b.main)).toBe("TRYAGAINTOGETHER!");
-    // the headline is drawn from dots: different colour per kind, and different dot counts
-    const dots = (l: string[], c: string) => l.filter((e) => e.startsWith(`fill ${c} `)).length;
-    expect(dots(t.main, "#ffe34a")).toBeGreaterThan(20);
-    expect(dots(b.main, "#bfe9ff")).toBeGreaterThan(20);
-    expect(dots(t.main, "#bfe9ff")).toBe(0);
-    // an explicit kind overrides the state (the seam 23b can use)
-    const o = makeHarness();
-    drawEnding(o.ctx, o.sheet, { ending: "bad" }, 0, "true");
-    expect(text(o.main)).toBe("THANKSFORPLAYING!");
-  });
-
-  it("is done after ENDING_CARD_TICKS", () => {
-    expect(endingDone(ENDING_CARD_TICKS - 1)).toBe(false);
-    expect(endingDone(ENDING_CARD_TICKS)).toBe(true);
-  });
-});
 
 describe("game-over canvas overlay", () => {
   const players = [

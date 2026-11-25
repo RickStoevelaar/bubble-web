@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SUPER_CODE } from "@bubble/shared";
 import { computeLayout } from "../src/render/layout";
 import { ContinuePrompt, GameOverPanel, MIN_BUTTON_H, buttonPlacement } from "../src/screens/gameover";
-import { installScoresInput, installTitleStart, isStartKey, parseDevRound, toGame } from "../src/screens/input";
+import { installEndingSkip, installScoresInput, installTitleStart, isStartKey, parseDevRound, toGame } from "../src/screens/input";
 import { FORM_KEY, JoinForm, SUPER_HINT, type JoinFormEls } from "../src/screens/join-form";
 import { planScreenLayout } from "../src/screens/plan";
 import type { Screen } from "../src/screens/machine";
@@ -496,5 +496,98 @@ describe("screen layout plans", () => {
     const g2 = planScreenLayout("game", computeLayout(844, 390, 3), 844, 390, true, 0);
     expect(g1.deckBox).not.toEqual(g2.deckBox);
     expect(g2.deckBox).toEqual({ x: 0, y: 0, width: 844, height: 390 });
+  });
+});
+
+// ---- 23b: ending skip input and the remembered-code hint ---------------------------------------------------------
+describe("ending skip input", () => {
+  it("fires on a tap or Enter/Escape/Space only while allowed, once, and is fully removed by its disposer", () => {
+    const t = target();
+    let allowed = false;
+    let n = 0;
+    const off = installEndingSkip(t, () => allowed, () => n++);
+    expect(t.count()).toBe(2);
+    t.fire("pointerdown", { target: null });
+    t.fire("keydown", key("Enter"));
+    expect(n).toBe(0);
+    allowed = true;
+    t.fire("keydown", key("a"));
+    t.fire("keydown", key("Enter", { ctrlKey: true }));
+    expect(n).toBe(0);
+    const k = key("Escape");
+    t.fire("keydown", k);
+    expect(n).toBe(1);
+    expect(k.prevented).toBe(true);
+    t.fire("pointerdown", { target: null });
+    t.fire("keydown", key(" "));
+    expect(n).toBe(1);
+    off();
+    expect(t.count()).toBe(0);
+  });
+  it("ignores key repeat and presses on controls, and a tap works", () => {
+    const t = target();
+    let n = 0;
+    const off = installEndingSkip(t, () => true, () => n++);
+    t.fire("keydown", key("Enter", { repeat: true }));
+    t.fire("pointerdown", { target: { closest: () => ({}) } });
+    expect(n).toBe(0);
+    t.fire("pointerdown", { target: { closest: () => null } });
+    expect(n).toBe(1);
+    off();
+  });
+  it("a disposed listener never fires, even if an event is delivered late", () => {
+    const t = target();
+    let n = 0;
+    let handler: ((e: object) => void) | undefined;
+    const spy = {
+      addEventListener: (ty: string, h: never) => {
+        if (ty === "keydown") handler = h as never;
+        t.addEventListener(ty, h);
+      },
+      removeEventListener: t.removeEventListener,
+    };
+    const off = installEndingSkip(spy, () => true, () => n++);
+    off();
+    handler?.(key("Enter"));
+    expect(n).toBe(0);
+  });
+});
+
+describe("join hint shows the remembered Super code", () => {
+  const CODE_KEY = "bubbleweb.superCode";
+  it("shows 'your code: X' when remembered, without typing the room; hidden when absent", () => {
+    const f = formEls();
+    const s = store();
+    const form = new JoinForm(f.els, s, SUPER_CODE, () => {}, () => {});
+    expect(f.hint.hidden).toBe(true);
+    s.setItem(CODE_KEY, SUPER_CODE);
+    form.show();
+    expect(f.hint.hidden).toBe(false);
+    expect(f.hint.textContent).toBe(`your code: ${SUPER_CODE}`);
+    f.room.value = SUPER_CODE;
+    f.room.t.fire("input");
+    expect(f.hint.textContent).toBe(`${SUPER_HINT} - your code: ${SUPER_CODE}`);
+    f.room.value = "";
+    f.room.t.fire("input");
+    expect(f.hint.textContent).toBe(`your code: ${SUPER_CODE}`);
+  });
+  it("ignores junk in storage and survives a throwing store", () => {
+    const f = formEls();
+    const s = store();
+    s.setItem(CODE_KEY, "<img onerror=x>");
+    const form = new JoinForm(f.els, s, SUPER_CODE, () => {}, () => {});
+    form.show();
+    expect(f.hint.hidden).toBe(true);
+    const g = formEls();
+    const boom = {
+      getItem: (k: string) => {
+        if (k === CODE_KEY) throw new Error("blocked");
+        return null;
+      },
+      setItem: () => {},
+    };
+    const form2 = new JoinForm(g.els, boom, SUPER_CODE, () => {}, () => {});
+    expect(() => form2.show()).not.toThrow();
+    expect(g.hint.hidden).toBe(true);
   });
 });
