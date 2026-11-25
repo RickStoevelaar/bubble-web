@@ -1,4 +1,4 @@
-import { GRID_H, TILE } from "../constants";
+import { GRID_H, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import { Rng } from "../rng";
@@ -7,7 +7,6 @@ import { PLAYER_SIZE, stepPlayer } from "./player";
 
 const P1_SPAWN_COL = 3;
 const P2_SPAWN_COL = 28;
-const START_LIVES = 3;
 
 function newPlayer(id: 0 | 1): PlayerState {
   return {
@@ -18,7 +17,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     vy: 0,
     facing: id === 0 ? 1 : -1,
     state: "alive",
-    lives: START_LIVES,
+    lives: TUNING.startLives,
     score: 0,
     fireCooldown: 0,
     invulnTicks: 0,

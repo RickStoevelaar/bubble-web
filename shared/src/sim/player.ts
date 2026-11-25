@@ -7,8 +7,6 @@ import type { PlayerState, SimEvent } from "../types";
 /** Player body is a square of this many pixels, centered on (x, y). */
 export const PLAYER_SIZE = 14;
 const HALF = PLAYER_SIZE / 2;
-/** Multiplier on walk speed with the speed power-up. */
-export const SPEED_POWER_MULT = 1.5;
 const EPS = 0.001;
 
 /**
@@ -42,7 +40,7 @@ export function stepPlayer(
   const lv = sim.currentLevel;
 
   const dir = ((buttons & BTN.R) !== 0 ? 1 : 0) - ((buttons & BTN.L) !== 0 ? 1 : 0);
-  const speed = TUNING.walkSpeed * (p.powers.speed ? SPEED_POWER_MULT : 1);
+  const speed = TUNING.walkSpeed * (p.powers.speed ? TUNING.speedPowerMult : 1);
   p.vx = dir * speed;
   if (dir !== 0) p.facing = dir > 0 ? 1 : -1;
 
