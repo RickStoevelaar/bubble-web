@@ -27,16 +27,29 @@ export function nextLifeThreshold(score: number): number {
   return TUNING.firstExtraLifeScore + steps * TUNING.extraLifeStep;
 }
 
-/** The single entry point for every score change; grants extra lives and returns any "oneup" events. */
+/** Highest score a player can hold (realistic scores stay below 1e9); restore and addScore clamp to it. */
+export const MAX_SCORE = 1e12;
+/** A single addScore call reports at most this many "oneup" events (ordinary play crosses at most a handful). */
+const MAX_ONEUP_EVENTS = 1000;
+
+/**
+ * The single entry point for every score change; grants extra lives and returns any "oneup" events.
+ * One life (and one event) per threshold crossed, computed arithmetically so it terminates for any numbers: lives stop
+ * at maxLives but the threshold still advances past the score. A non-finite or non-positive `nextLifeAt` (a damaged
+ * state) is first recomputed from the score without granting anything; the score is capped at MAX_SCORE.
+ */
 export function addScore(sim: { state: GameState }, player: 0 | 1, n: number): SimEvent[] {
   const events: SimEvent[] = [];
   const p = sim.state.players[player];
   if (!p || !Number.isFinite(n) || n <= 0) return events;
-  p.score += n;
-  while (p.score >= p.nextLifeAt) {
-    if (p.lives < TUNING.maxLives) p.lives++;
-    p.nextLifeAt += TUNING.extraLifeStep;
-    events.push({ kind: "oneup", player });
+  const base = Number.isFinite(p.score) ? p.score : 0;
+  p.score = Math.min(MAX_SCORE, Math.max(0, base) + n);
+  if (!Number.isFinite(p.nextLifeAt) || p.nextLifeAt <= 0) p.nextLifeAt = nextLifeThreshold(p.score);
+  if (p.score >= p.nextLifeAt) {
+    const k = Math.floor((p.score - p.nextLifeAt) / TUNING.extraLifeStep) + 1;
+    if (p.lives < TUNING.maxLives) p.lives = Math.min(TUNING.maxLives, p.lives + k);
+    p.nextLifeAt += k * TUNING.extraLifeStep;
+    for (let i = 0; i < Math.min(k, MAX_ONEUP_EVENTS); i++) events.push({ kind: "oneup", player });
   }
   return events;
 }

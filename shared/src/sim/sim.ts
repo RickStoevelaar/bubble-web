@@ -8,7 +8,7 @@ import { newBoss, repairBoss } from "./boss";
 import { stepEnemies } from "./enemies";
 import { repairItems, stepItems } from "./items";
 import { maybeSpawnItem, resolvePendingRound } from "./powers";
-import { addScore, nextLifeThreshold } from "./scoring";
+import { MAX_SCORE, addScore, nextLifeThreshold } from "./scoring";
 import { saneBody } from "./physics";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
@@ -167,7 +167,9 @@ export class Sim {
     sim.state.enemies = sim.state.enemies.map((e) => (e.type === "boss" ? repairBoss(e, sim.state) : e));
     sim.currentLevel = levelForState(levels, sim.state);
     for (const p of sim.state.players as Partial<PlayerState>[]) {
-      if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
+      // A damaged score is clamped; a threshold that is missing, non-positive or not above the score is recomputed.
+      p.score = typeof p.score === "number" && p.score === p.score ? Math.min(MAX_SCORE, Math.max(0, p.score)) : 0;
+      if (!Number.isFinite(p.nextLifeAt) || p.nextLifeAt! <= 0 || p.nextLifeAt! <= p.score) p.nextLifeAt = nextLifeThreshold(p.score);
       repairPlayer(p);
     }
     // A damaged save may carry absurd finite coordinates or speeds: clamp every entity into a sane range.
