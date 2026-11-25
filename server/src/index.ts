@@ -57,8 +57,14 @@ export interface RunningServer {
 
 const DEFAULT_STATIC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
+export const MIN_PIN_LENGTH = 8;
+
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig & { port: number } {
   if (!env.PIN) throw new Error("PIN environment variable is required (the shared room PIN) and must not be empty");
+  // The PIN is the only access control: the deploy docs require >= 8 characters. Dev and tests may opt out explicitly.
+  if (env.PIN.length < MIN_PIN_LENGTH && env.ALLOW_DEV !== "1") {
+    throw new Error(`PIN must be at least ${MIN_PIN_LENGTH} characters (set ALLOW_DEV=1 to allow a short PIN for local development only)`);
+  }
   const port = env.PORT ? Number(env.PORT) : 8080;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`invalid PORT: ${env.PORT}`);
   return { pin: env.PIN, port, dataDir: dataDir(env), trustProxy: env.TRUST_PROXY === "1", allowDev: env.ALLOW_DEV === "1" };

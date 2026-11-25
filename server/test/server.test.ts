@@ -45,8 +45,8 @@ describe("config", () => {
   it("refuses to start without a PIN", async () => {
     expect(() => loadConfig({})).toThrow(/PIN/);
     expect(() => loadConfig({ PIN: "" })).toThrow(/PIN/);
-    expect(loadConfig({ PIN: "1", PORT: "9000" })).toMatchObject({ pin: "1", port: 9000 });
-    expect(loadConfig({ PIN: "1" }).port).toBe(8080);
+    expect(loadConfig({ PIN: "1", PORT: "9000", ALLOW_DEV: "1" })).toMatchObject({ pin: "1", port: 9000 });
+    expect(loadConfig({ PIN: "1", ALLOW_DEV: "1" }).port).toBe(8080);
     await expect(createServer({ pin: "", port: 0 })).rejects.toThrow(/PIN/);
   });
 });

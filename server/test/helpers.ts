@@ -53,6 +53,15 @@ export class MemPersist implements Persist {
   }
   remove(code: string): void {
     this.files.delete(code);
+    this.seatFiles.delete(code);
+  }
+  /** Raw seat records (any shape, so tests can plant garbage). */
+  seatFiles = new Map<string, unknown>();
+  loadSeats(code: string): unknown {
+    return this.seatFiles.get(code);
+  }
+  saveSeats(code: string, seats: unknown): void {
+    this.seatFiles.set(code, JSON.parse(JSON.stringify(seats)));
   }
 }
 

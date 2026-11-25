@@ -13,9 +13,11 @@ COPY server server
 COPY client client
 RUN node client/build.mjs && node server/build.mjs
 
+# TRUST_PROXY is deliberately NOT set here: a plain `docker run -p` would let clients forge X-Forwarded-For and dodge the
+# per-IP PIN limiter. compose.yml sets it for the Caddy-fronted deployment.
 # --- final stage: bundle only (ws is bundled in, no node_modules needed) ---
 FROM node:22-slim
-ENV NODE_ENV=production PORT=8080 DATA_DIR=/data TRUST_PROXY=1
+ENV NODE_ENV=production PORT=8080 DATA_DIR=/data
 WORKDIR /app
 # Layout the server expects: <root>/server/dist/index.js and <root>/client/dist
 COPY --from=build /src/server/dist/index.js /src/server/dist/index.js.map ./server/dist/

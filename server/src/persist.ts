@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { GameState } from "@bubble/shared";
 import type { Persist } from "./room";
@@ -46,13 +46,33 @@ export function createFilePersist(dir: string): Persist {
     load: (code) => loadJson<GameState | undefined>(roomFile(dir, code), undefined),
     save: (code, state) => saveJson(roomFile(dir, code), state),
     remove: (code) => {
-      try {
-        unlinkSync(roomFile(dir, code));
-      } catch (err) {
-        if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      for (const f of [roomFile(dir, code), seatsFile(dir, code)]) {
+        try {
+          unlinkSync(f);
+        } catch (err) {
+          if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        }
       }
     },
+    loadSeats: (code) => {
+      const file = seatsFile(dir, code);
+      try {
+        if (statSync(file).size > MAX_SEATS_FILE_BYTES) return undefined;
+      } catch {
+        return undefined;
+      }
+      return loadJson<unknown>(file, undefined);
+    },
+    saveSeats: (code, seats) => saveJson(seatsFile(dir, code), seats),
   };
+}
+
+/** Seat records are two tokens and two short names; anything bigger is not ours and is ignored unread. */
+export const MAX_SEATS_FILE_BYTES = 1024;
+
+function seatsFile(dir: string, code: string): string {
+  if (!SAFE_CODE.test(code)) throw new Error(`unsafe room code: ${code}`);
+  return join(dir, `room-${code}.seats.json`);
 }
 
 /** One finished run: a team score (co-op household game), the round reached and when it ended. */

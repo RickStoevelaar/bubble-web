@@ -1,5 +1,6 @@
 import { BTN, TEST_LEVEL } from "@bubble/shared";
 import { describe, expect, it } from "vitest";
+import { SUSPEND_AFTER_MS } from "../src/room";
 import { RoomManager } from "../src/rooms";
 import { FakeSocket, MemPersist, PIN, joinMsg, makeRoom, ticks } from "./helpers";
 
@@ -155,6 +156,7 @@ describe("Room reconnect", () => {
     expect(x.of("joined")[0]!.playerId).toBe(1);
     expect(x.of("joined")[0]!.rejoinToken).not.toBe("deadbeef");
     a.drop();
+    h.clock.t += SUSPEND_AFTER_MS; // inside the window a's seat stays reserved (see final-fix.test.ts)
     const y = seat(h, { rejoinToken: "wrong" });
     expect(y.of("joined")[0]!.playerId).toBe(0);
     expect(y.of("joined")[0]!.rejoinToken).not.toBe(token);
@@ -262,6 +264,7 @@ describe("suspend and resume", () => {
     const persist = new MemPersist();
     const h = makeRoom({}, persist);
     const a = seat(h);
+    const token = a.of("joined")[0]!.rejoinToken;
     ticks(h.room, 30);
     h.room.sim!.state.players[0]!.score = 1234;
     const round = h.room.sim!.state.round;
@@ -275,7 +278,7 @@ describe("suspend and resume", () => {
     expect(h.room.dormant).toBe(true);
 
     const h2 = makeRoom({}, persist, h.clock);
-    const a2 = seat(h2);
+    const a2 = seat(h2, { rejoinToken: token }); // the seat token is persisted with the save
     expect(a2.of("joined")[0]).toMatchObject({ playerId: 0, round });
     ticks(h2.room, 3);
     const snap = a2.last("snap");

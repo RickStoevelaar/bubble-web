@@ -47,3 +47,23 @@ describe("persist", () => {
     expect(() => p.load("a/b")).toThrow();
   });
 });
+
+describe("seat records beside the save", () => {
+  it("round-trip, are removed with the save, and an oversize or corrupt file reads as nothing", () => {
+    const p = createFilePersist(dir);
+    const seats = [{ token: "a".repeat(32), name: "Ann" }, null];
+    p.saveSeats!("ABC", seats);
+    expect(p.loadSeats!("ABC")).toEqual(seats);
+    expect(readdirSync(dir)).toEqual(["room-ABC.seats.json"]);
+    p.remove("ABC");
+    expect(readdirSync(dir)).toEqual([]);
+    expect(p.loadSeats!("ABC")).toBeUndefined();
+    writeFileSync(join(dir, "room-ABC.seats.json"), "x".repeat(5000));
+    expect(p.loadSeats!("ABC")).toBeUndefined();
+    writeFileSync(join(dir, "room-ABC.seats.json"), "{not json");
+    expect(p.loadSeats!("ABC")).toBeUndefined();
+  });
+  it("refuses an unsafe code", () => {
+    expect(() => createFilePersist(dir).saveSeats!("../x", [])).toThrow(/unsafe/);
+  });
+});

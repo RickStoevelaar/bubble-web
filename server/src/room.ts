@@ -17,7 +17,17 @@ export interface Persist {
   load(code: string): GameState | undefined;
   save(code: string, state: GameState): void;
   remove(code: string): void;
+  /**
+   * Seat records (rejoin token + name per hero) kept next to the save so a token stays meaningful across a suspend or
+   * restart. Optional: a store without them behaves as before. `loadSeats` returns untrusted data (the Room validates it).
+   * Removed together with the save by `remove`.
+   */
+  loadSeats?(code: string): unknown;
+  saveSeats?(code: string, seats: SavedSeat[]): void;
 }
+
+/** One persisted seat: null for a hero slot nobody ever held. Never sent to any client, never logged. */
+export type SavedSeat = { token: string; name: string } | null;
 
 /** Timer functions, injectable so tests need no real time. */
 export interface Timers {
@@ -74,6 +84,7 @@ export interface RoomOptions {
 export const SUSPEND_AFTER_MS = 10_000;
 /** A failed unlock write is retried from the tick loop no sooner than this many ms (injected clock) after the last try. */
 export const UNLOCK_RETRY_MS = 5000;
+export const TICK_LOG_EVERY_MS = 5000;
 export const PIN_FAIL_LIMIT = 5;
 export const PIN_WINDOW_MS = 60_000;
 const SNAPSHOT_EVERY = TICK_RATE / SNAPSHOT_RATE;
@@ -162,6 +173,29 @@ interface Seat {
   sock?: SocketLike;
   buttons: number;
   lastSeq: number;
+  /** When the holder last disconnected (injected clock). The seat is reserved for SUSPEND_AFTER_MS after that. */
+  leftAt?: number;
+}
+
+const TOKEN_RE = /^[0-9a-f]{32}$/;
+const MAX_SEAT_NAME = 16;
+
+/** Tolerant, size-bounded reading of persisted seat records: anything unexpected yields no seats at all. */
+export function parseSavedSeats(raw: unknown): SavedSeat[] {
+  if (!Array.isArray(raw) || raw.length > 2) return [];
+  const out: SavedSeat[] = [];
+  for (const e of raw) {
+    if (e === null) {
+      out.push(null);
+      continue;
+    }
+    if (typeof e !== "object") return [];
+    const r = e as { token?: unknown; name?: unknown };
+    if (typeof r.token !== "string" || !TOKEN_RE.test(r.token)) return [];
+    const name = typeof r.name === "string" ? r.name.slice(0, MAX_SEAT_NAME) : "Player";
+    out.push({ token: r.token, name });
+  }
+  return out;
 }
 
 function usableState(s: unknown, levels: LevelData[]): s is GameState {
@@ -195,6 +229,9 @@ export class Room {
   private loop?: unknown;
   private loopStart = 0;
   private loopTicks = 0;
+  /** Tick-failure log throttle: at most one line per TICK_LOG_EVERY_MS, with a count of the lines held back. */
+  private tickLogAt?: number;
+  private tickLogSuppressed = 0;
   private readonly now: () => number;
   private readonly timers: Timers;
   private readonly limiter: RateLimiter;
@@ -213,30 +250,71 @@ export class Room {
       try {
         this.sim = Sim.restore(levels, saved);
         this.scoreRecorded = this.sim.state.runOver;
+        this.restoreSeats();
       } catch {
         this.sim = undefined; // unusable save: start a fresh run instead
+        this.seats = [];
       }
     }
+  }
+
+  /** Re-creates disconnected seats from the persisted tokens (a save without them restores none). */
+  private restoreSeats(): void {
+    let saved: SavedSeat[] = [];
+    try {
+      saved = parseSavedSeats(this.persist.loadSeats?.(this.code));
+    } catch {
+      saved = [];
+    }
+    const n = this.sim?.state.players.length ?? 0;
+    saved.forEach((e, i) => {
+      if (!e || i >= n) return;
+      this.seats[i] = { token: e.token, name: e.name, buttons: 0, lastSeq: 0, leftAt: this.now() };
+    });
+  }
+
+  private newSim(): Sim {
+    return new Sim(this.levels, this.opts.seed ?? randomInt(1, 2 ** 31), {
+      playerCount: 1,
+      superMode: this.opts.superMode === true,
+      startRound: this.opts.startRound,
+    });
   }
 
   connectedCount(): number {
     return this.seats.filter((s) => s?.sock).length;
   }
 
-  join(sock: SocketLike, msg: ClientMsg): void {
+  /** `pinVerified`: the caller (RoomManager) already ran the PIN decision for this very join, so it is not repeated or counted twice. */
+  join(sock: SocketLike, msg: ClientMsg, pinVerified = false): void {
     try {
-      this.doJoin(sock, msg);
+      this.doJoin(sock, msg, pinVerified);
     } catch (err) {
       console.error(`room ${this.code}: join failed`, err);
       this.reject(sock, "badmsg");
     }
   }
 
-  private doJoin(sock: SocketLike, msg: ClientMsg): void {
+  private doJoin(sock: SocketLike, msg: ClientMsg, pinVerified: boolean): void {
     if (msg.t !== "join" || this.dormant) return this.reject(sock, "badmsg");
-    const ip = sock.ip ?? "unknown";
-    const pin = verifyPin(this.limiter, ip, msg.pin, this.opts.pin);
-    if (pin !== "ok") return this.reject(sock, pin);
+    if (!pinVerified) {
+      const pin = verifyPin(this.limiter, sock.ip ?? "unknown", msg.pin, this.opts.pin);
+      if (pin !== "ok") return this.reject(sock, pin);
+    }
+
+    // A finished run is never resumed. Rule: when a join finds the run over and NOBODY connected, the room starts a
+    // fresh run (new Sim, seats and run bookkeeping reset; superMode/startRound from the room options). If another
+    // socket is still connected (e.g. a partner watching the credits) the joiner enters that same finished room as
+    // before; the restart then happens at the next join into an empty room, i.e. once every connected player has left.
+    if (this.sim?.state.runOver && this.connectedCount() === 0) {
+      this.sim = this.newSim();
+      this.seats = [];
+      this.pending = [];
+      this.scoreRecorded = false;
+      this.unlockReported = false;
+      this.unlockDate = undefined;
+      this.unlockFailing = false;
+    }
 
     let idx = -1;
     let reclaim = false;
@@ -245,14 +323,19 @@ export class Room {
       idx = this.seats.findIndex((s) => s !== undefined && safeEqual(s.token, token));
       reclaim = idx >= 0;
     }
-    if (!reclaim) idx = [0, 1].find((i) => !this.seats[i]?.sock) ?? -1;
+    if (!reclaim) {
+      // A fresh join takes a never-used seat first, else a free seat whose last holder has been gone for at least the
+      // suspend window. A seat whose holder could still come back with their token stays reserved: "full" until then.
+      const now = this.now();
+      const open = (i: number): boolean => {
+        const s = this.seats[i];
+        return !s || (!s.sock && now - (s.leftAt ?? -Infinity) >= SUSPEND_AFTER_MS);
+      };
+      idx = [0, 1].find((i) => !this.seats[i]) ?? [0, 1].find(open) ?? -1;
+    }
     if (idx < 0) return this.reject(sock, "full");
 
-    const sim = (this.sim ??= new Sim(this.levels, this.opts.seed ?? randomInt(1, 2 ** 31), {
-      playerCount: 1,
-      superMode: this.opts.superMode === true,
-      startRound: this.opts.startRound,
-    }));
+    const sim = (this.sim ??= this.newSim());
     if (idx >= sim.state.players.length) sim.addPlayer();
 
     const old = this.seats[idx];
@@ -371,6 +454,7 @@ export class Room {
     if (seat.sock !== sock) return; // stale socket, slot already reclaimed
     seat.sock = undefined;
     seat.buttons = 0;
+    seat.leftAt = this.now();
     const playerId = this.seats.indexOf(seat) as 0 | 1;
     for (const other of this.seats) {
       if (other?.sock) this.send(other.sock, { t: "peer", playerId, name: seat.name, connected: false });
@@ -442,13 +526,41 @@ export class Room {
         this.tick();
       }
     } catch (err) {
-      console.error(`room ${this.code}: tick failed`, err);
+      this.logTickFailure(err);
     }
     if (this.loopTicks < due) {
       // Fell too far behind (e.g. a stall): drop the backlog instead of fast-forwarding.
       this.loopStart = this.now();
       this.loopTicks = 0;
     }
+  }
+
+  private saveSeats(): void {
+    if (!this.persist.saveSeats) return;
+    try {
+      this.persist.saveSeats(
+        this.code,
+        [0, 1].map((i) => {
+          const s = this.seats[i];
+          return s ? { token: s.token, name: s.name } : null;
+        }),
+      );
+    } catch {
+      console.error(`room ${this.code}: persisting seats failed`); // never the records themselves: they hold tokens
+    }
+  }
+
+  /** A persistent tick exception would log ~125 lines/s: the first goes out at once, then at most one per 5 s. */
+  private logTickFailure(err: unknown): void {
+    const now = this.now();
+    if (this.tickLogAt !== undefined && now - this.tickLogAt < TICK_LOG_EVERY_MS) {
+      this.tickLogSuppressed++;
+      return;
+    }
+    const held = this.tickLogSuppressed;
+    this.tickLogAt = now;
+    this.tickLogSuppressed = 0;
+    console.error(`room ${this.code}: tick failed${held ? ` (${held} similar errors suppressed)` : ""}`, err);
   }
 
   /** Persists the run (unless it is over), stops the loop and marks the room dormant. */
@@ -460,7 +572,10 @@ export class Room {
     try {
       if (this.sim) {
         if (this.sim.state.runOver) this.persist.remove(this.code);
-        else this.persist.save(this.code, this.sim.state);
+        else {
+          this.persist.save(this.code, this.sim.state);
+          this.saveSeats();
+        }
       }
     } catch (err) {
       console.error(`room ${this.code}: persist failed`, err);

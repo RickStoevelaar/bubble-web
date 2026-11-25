@@ -19,7 +19,8 @@ websocket join all worked), but `docker build` and `docker compose up` have **no
 cp .env.example .env
 ```
 
-Set `PIN=` to a long value: **at least 8 characters, alphanumeric**. The PIN is the only access control for the game
+Set `PIN=` to a long value: **at least 8 characters, alphanumeric**. The server refuses to start with a shorter PIN
+(`ALLOW_DEV=1` lifts that for local development only; never set it on the box). The PIN is the only access control for the game
 (anyone who reaches the URL and knows it can play), so do not use a word or a date. `.env` is gitignored; never commit it.
 `docker compose` refuses to start if `PIN` is missing or empty.
 
@@ -31,7 +32,7 @@ The container runs as the non-root `node` user (uid 1000) and `./data` is mounte
 mkdir -p data && chown 1000:1000 data
 ```
 
-`data/` holds `highscores.json`, `unlocks.json` and the suspended runs (continue/resume state).
+`data/` holds `highscores.json`, `unlocks.json` and the suspended runs (continue/resume state, plus `room-*.seats.json`: the rejoin tokens, so a phone can reclaim its hero after a restart).
 
 ## 3. Start
 
@@ -64,7 +65,8 @@ bubble.<server-ip-dashed>.sslip.io {
 Notes:
 
 - WebSocket upgrades (`/ws`) pass through `reverse_proxy` by default; no extra config.
-- `TRUST_PROXY=1` (already set in `compose.yml`) makes the server take the client IP from the proxy's forwarded header. That is
+- `TRUST_PROXY=1` is set in `compose.yml` and deliberately **not** baked into the Docker image (a plain `docker run -p` would then let any client forge
+  `X-Forwarded-For` and dodge the per-IP PIN limiter; with `docker run` behind a proxy, pass `-e TRUST_PROXY=1` yourself). It makes the server take the client IP from the proxy's forwarded header. That is
   correct **only** because Caddy is the sole thing in front of the container. If anything else ever fronts it, or the port is published, revisit it.
 - Reload Caddy without downtime via its container, e.g. `docker exec <caddy-container> caddy reload --config /etc/caddy/Caddyfile`
   (look up the right container name and config path on the box first; validate with `caddy validate` the same way if you like).

@@ -54,12 +54,11 @@ export class RoomManager {
 
   join(sock: SocketLike, msg: Extract<ClientMsg, { t: "join" }>): void {
     const superRoom = msg.room === SUPER_CODE; // msg.room is already validated and upper-cased
-    if (superRoom) {
-      // PIN first, exactly as for any room, so a stranger never learns whether Super mode is unlocked.
-      const pin = verifyPin(this.limiter, sock.ip ?? "unknown", msg.pin, this.opts.pin);
-      if (pin !== "ok") return this.rejectJoin(sock, pin);
-      if (this.opts.unlocks?.isSuperUnlocked?.() !== true) return this.rejectJoin(sock, "locked");
-    }
+    // PIN first, for every room: before any room lookup/creation (which would read a save), before the room cap
+    // answer and before the Super gate, so a stranger learns nothing (not even "full" or "locked") and costs nothing.
+    const pin = verifyPin(this.limiter, sock.ip ?? "unknown", msg.pin, this.opts.pin);
+    if (pin !== "ok") return this.rejectJoin(sock, pin);
+    if (superRoom && this.opts.unlocks?.isSuperUnlocked?.() !== true) return this.rejectJoin(sock, "locked");
     let room = this.rooms.get(msg.room);
     const created = !room;
     if (!room) {
@@ -83,7 +82,7 @@ export class RoomManager {
       });
       this.rooms.set(msg.room, room);
     }
-    room.join(sock, msg);
+    room.join(sock, msg, true);
     // A rejected first join (bad PIN etc.) must not leave an empty room occupying a slot.
     if (created && room.connectedCount() === 0) this.rooms.delete(msg.room);
     else if (created) room.start();
