@@ -1,5 +1,6 @@
 import { PLAYER_SIZE, Sim, TILE, TUNING, analyseStands, maybeSpawnDoor, playerSpawnTiles, startsOfTiles } from "../../src";
 import type { ItemState, LevelData } from "../../src";
+import { memoised } from "./memo";
 
 /**
  * Where the real sim puts the secret door when `round` of `levels` is cleared by deathless players: runs the
@@ -20,7 +21,7 @@ export function doorReachability(levels: LevelData[], round: number): { tile: { 
   const tx = Math.floor(item.x / TILE);
   const ty = Math.round((item.y + TUNING.itemSize / 2) / TILE);
   const spawns = playerSpawnTiles(level).filter((s): s is { col: number; row: number } => s !== null);
-  const g = analyseStands(level, startsOfTiles(spawns));
+  const g = memoised(level, "door-stands", () => analyseStands(level, startsOfTiles(spawns)));
   const standY = ty * TILE - PLAYER_SIZE / 2;
   const reachable = [...g.reachFrom[0]!].some((k) => {
     const n = g.nodes.get(k)!;

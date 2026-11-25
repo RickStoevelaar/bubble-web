@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BTN, FIELD_H, FIELD_W, GAME_LEVELS, Sim, TILE, TUNING, isSolid } from "../src";
-import type { GameState } from "../src";
+import { BTN, FIELD_H, FIELD_W, GAME_LEVELS, Sim, TILE, TUNING, isSolid } from "../../src";
+import type { GameState } from "../../src";
 
 const TICKS = 900;
 const FLIERS = new Set(["flyer", "bouncer"]);
@@ -32,9 +32,14 @@ function runLevel(round: number, input: (t: number) => [number, number]): { sim:
   return { sim, maxDelay, leftSpawnAt };
 }
 
-describe("every level runs in the sim", () => {
-  it("has at least rounds 1-50", () => expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(50));
-  for (let round = 1; round <= 50; round++) {
+/**
+ * Registers the sim smoke tests (idle players, then players walking right and firing) for rounds `from..to`.
+ * One file per batch (levels-smoke-001-025.test.ts, ...) so vitest runs them in parallel workers.
+ */
+export function describeSmoke(from: number, to: number): void {
+  describe(`rounds ${from}-${to} run in the sim`, () => {
+    it("exist in GAME_LEVELS", () => expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(to));
+  for (let round = from; round <= to; round++) {
     it(`round ${round}: idle players`, () => {
       const lv = GAME_LEVELS[round - 1]!;
       const { sim, maxDelay, leftSpawnAt } = runLevel(round, () => [0, 0]);
@@ -58,6 +63,11 @@ describe("every level runs in the sim", () => {
     });
   }
 
+  });
+}
+
+export function describeHurry(): void {
+  describe("hurry-up", () => {
   it("the hurry-up fires only once hurryUpTicks have passed", () => {
     const sim = new Sim(GAME_LEVELS, 12345, { playerCount: 2, startRound: 1 });
     sim.state.roundTicks = TUNING.hurryUpTicks - 3;
@@ -66,4 +76,5 @@ describe("every level runs in the sim", () => {
     for (let i = 0; i < 4; i++) sim.step([0, 0]);
     expect(sim.state.hurryActive).toBe(true);
   });
-});
+  });
+}
