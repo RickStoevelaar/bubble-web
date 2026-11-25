@@ -10,6 +10,8 @@ export const JOIN_TIMEOUT_MS = 10_000;
 export interface ManagerOptions extends RoomOptions {
   maxRooms?: number;
   joinTimeoutMs?: number;
+  /** ALLOW_DEV=1: a join that creates a new room may carry `startRound`. Off by default; never reported to clients. */
+  allowDev?: boolean;
 }
 
 /** Registry of live rooms: routes first messages, enforces the room cap, resumes dormant rooms. */
@@ -66,8 +68,13 @@ export class RoomManager {
         this.closeQuietly(sock);
         return;
       }
+      // Dev shortcut: only for a NEW room, only with allowDev, only an in-range integer; otherwise silently ignored.
+      const sr = msg.startRound;
+      const startRound =
+        this.opts.allowDev === true && sr !== undefined && Number.isInteger(sr) && sr >= 1 && sr <= this.levels.length ? sr : undefined;
       room = new Room(msg.room, this.levels, this.persist, {
         ...this.opts,
+        startRound,
         superMode: superRoom,
         limiter: this.limiter,
         onSuspend: (r) => {

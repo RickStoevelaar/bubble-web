@@ -23,9 +23,11 @@ export function parseClientMsg(data: unknown): ClientMsg | null {
       if (typeof m.pin !== "string" || m.pin.length > 128) return null;
       if (m.name !== undefined && typeof m.name !== "string") return null;
       if (m.rejoinToken !== undefined && (typeof m.rejoinToken !== "string" || m.rejoinToken.length > 64)) return null;
+      if (m.startRound !== undefined && (typeof m.startRound !== "number" || !Number.isSafeInteger(m.startRound))) return null;
       const name = (typeof m.name === "string" ? m.name : "").replace(CONTROL_CHARS, "").trim().slice(0, MAX_NAME).trim();
       const msg: ClientMsg = { t: "join", room: m.room.toUpperCase(), pin: m.pin, name: name || DEFAULT_NAME };
       if (m.rejoinToken !== undefined) msg.rejoinToken = m.rejoinToken as string;
+      if (m.startRound !== undefined) msg.startRound = m.startRound as number;
       return msg;
     }
     case "input":

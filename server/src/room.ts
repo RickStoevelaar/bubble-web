@@ -58,6 +58,11 @@ export interface RoomOptions {
   pin: string;
   now?: () => number;
   timers?: Timers;
+  /**
+   * Dev shortcut: a NEW run starts in this round (an integer in [1, levels.length], validated by the manager).
+   * Ignored when the room was restored from a save.
+   */
+  startRound?: number;
   /** Fixed seed for the new run (tests); random otherwise. */
   seed?: number;
   /** Shared per-IP failed-PIN limiter; each room makes its own when omitted. */
@@ -246,6 +251,7 @@ export class Room {
     const sim = (this.sim ??= new Sim(this.levels, this.opts.seed ?? randomInt(1, 2 ** 31), {
       playerCount: 1,
       superMode: this.opts.superMode === true,
+      startRound: this.opts.startRound,
     }));
     if (idx >= sim.state.players.length) sim.addPlayer();
 

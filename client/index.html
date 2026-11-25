@@ -102,6 +102,68 @@
       #join button:disabled {
         opacity: 0.6;
       }
+      #join button.secondary {
+        background: transparent;
+        border: 1px solid #556;
+        color: #ccd;
+        padding: 8px;
+      }
+      #join label.check {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+      }
+      #join label.check input {
+        width: 20px;
+        height: 20px;
+      }
+      #join .note,
+      #join-hint {
+        font-size: 12px;
+        color: #9aa;
+        margin-top: -6px;
+      }
+      #join-hint {
+        color: #ffd36b;
+        margin-top: 0;
+      }
+      #join-hint[hidden] {
+        display: none;
+      }
+      #gameover-actions {
+        position: absolute;
+        display: flex;
+        gap: 12px;
+        box-sizing: border-box;
+        touch-action: manipulation;
+      }
+      #gameover-actions[hidden] {
+        display: none;
+      }
+      #gameover-actions button {
+        flex: 1;
+        min-height: 44px;
+        font: bold 22px system-ui, sans-serif;
+        letter-spacing: 1px;
+        color: #10142a;
+        background: #ffe34a;
+        border: 3px solid #fff6b0;
+        border-bottom-color: #b89b00;
+        border-radius: 12px;
+        touch-action: manipulation;
+      }
+      #gameover-actions button.quit {
+        background: #bfe9ff;
+        border-color: #eefaff;
+        border-bottom-color: #4a86b0;
+      }
+      #gameover-actions button:disabled {
+        opacity: 0.5;
+      }
+      #gameover-actions button:focus-visible {
+        outline: 3px solid #fff;
+        outline-offset: 2px;
+      }
       #join-error {
         min-height: 1.2em;
         color: #ff8a8a;
@@ -125,15 +187,23 @@
     <div id="deck"></div>
     <div id="safe" aria-hidden="true"></div>
     <div id="status" hidden></div>
-    <div id="join">
+    <div id="join" hidden>
       <form id="join-form" autocomplete="off">
         <h1>Bubble Web</h1>
-        <label>Room code<input id="room" name="room" maxlength="12" autocapitalize="characters" required /></label>
-        <label>Household PIN<input id="pin" name="pin" type="password" inputmode="numeric" required /></label>
-        <label>Your name<input id="name" name="name" maxlength="16" /></label>
+        <label>Room code<input id="room" name="room" maxlength="12" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" required /></label>
+        <div id="join-hint" role="note" hidden></div>
+        <label>Household PIN<input id="pin" name="pin" type="password" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required /></label>
+        <label class="check"><input id="remember-pin" type="checkbox" />remember PIN on this device</label>
+        <div class="note">stored on this device only</div>
+        <label>Your name<input id="name" name="name" maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false" /></label>
         <button id="join-go" type="submit">Join</button>
+        <button id="join-back" type="button" class="secondary">Back</button>
         <div id="join-error" role="alert"></div>
       </form>
+    </div>
+    <div id="gameover-actions" hidden>
+      <button id="go-continue" type="button">CONTINUE</button>
+      <button id="go-quit" type="button" class="quit">QUIT</button>
     </div>
     <script defer src="main.js"></script>
   </body>

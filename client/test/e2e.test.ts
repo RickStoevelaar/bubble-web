@@ -10,10 +10,15 @@ import { Connection, type StorageLike, type WebSocketLike } from "../src/net";
 const PIN = "e2e-pin";
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function until(what: string, cond: () => boolean, timeoutMs = 4000): Promise<void> {
+/**
+ * Polls `cond` until it holds. The default deadline is generous on purpose: the suite runs next to many other
+ * test files, and a loaded machine can stall the server tick loop, the sockets and this process for seconds.
+ * The deadline is a hang guard, never a performance assertion.
+ */
+async function until(what: string, cond: () => boolean, timeoutMs = 20_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!cond()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
     await sleep(10);
   }
 }
@@ -70,34 +75,55 @@ describe("client <-> real server", () => {
     await until("first snapshots", () => gameA.viewState(performance.now()) !== null && gameB.viewState(performance.now()) !== null);
     const startX = gameB.viewState(performance.now())!.players[0]!.x;
 
-    // 20 ticks of "right" at real 16 ms pacing, through the same path main.ts uses
-    let sent = 0;
-    while (sent < 20) {
-      const seq = a.conn.nextInputSeq();
-      if (seq !== undefined) {
-        a.conn.sendInput(seq, BTN.R);
-        gameA.pushInput(seq, BTN.R);
-        sent++;
-      }
-      await sleep(16);
-    }
+    // Sends `buttons` for `count` inputs at real 16 ms pacing, through the same path main.ts uses. Inputs are only
+    // handed out once the server's ack is known, so a slow first snapshot just delays them (bounded by `until`).
+    const press = async (buttons: number, count: number): Promise<void> => {
+      let sent = 0;
+      await until(`${count} inputs of ${buttons} to be sent`, () => {
+        const seq = a.conn.nextInputSeq();
+        if (seq !== undefined) {
+          a.conn.sendInput(seq, buttons);
+          gameA.pushInput(seq, buttons);
+          sent++;
+        }
+        return sent >= count;
+      }); // `until` sleeps 10 ms between polls: the pacing is real, never asserted
+    };
+    await press(BTN.R, 20);
 
     await until("player 0 to move right on client B", () => gameB.viewState(performance.now())!.players[0]!.x > startX + 5);
+
+    // Release the stick and let both clients SETTLE before comparing them. The old test compared A's predicted x
+    // with B's interpolated x while the hero was still walking and the two clients had received different
+    // snapshots (it failed once under load: "expected 76 to be >= 77"). A stationary hero has one position.
+    await press(0, 3);
+    const xs = () => [gameA.viewState(performance.now())!.players[0]!.x, gameB.viewState(performance.now())!.players[0]!.x] as const;
+    let last = xs();
+    let since = Date.now();
+    await until("both clients to agree on a settled position of player 0", () => {
+      const cur = xs();
+      if (cur[0] !== last[0] || cur[1] !== last[1]) {
+        last = cur;
+        since = Date.now();
+        return false;
+      }
+      return Date.now() - since >= 400 && Math.abs(cur[0] - cur[1]) <= 1;
+    });
     const vb = gameB.viewState(performance.now())!;
     const va = gameA.viewState(performance.now())!;
     expect(vb.players[0]!.x).toBeGreaterThan(startX + 5);
     expect(va.round).toBe(vb.round);
-    // player 0's own view is predicted, so it is at least as far right as what B sees
-    expect(va.players[0]!.x).toBeGreaterThanOrEqual(vb.players[0]!.x - 1);
+    // settled, player 0's own (predicted) view and what B sees are the same place
+    expect(Math.abs(va.players[0]!.x - vb.players[0]!.x)).toBeLessThanOrEqual(1);
 
     // drop A's socket from the client side: it reconnects and reclaims seat 0 with the stored token
     const states: string[] = [];
     a.conn.onState((s) => states.push(s));
     const tickBefore = gameB.viewState(performance.now())!.tick;
     sockets[0]!.close();
-    await until("A to rejoin", () => states.includes("reconnecting") && states[states.length - 1] === "joined", 6000);
+    await until("A to rejoin", () => states.includes("reconnecting") && states[states.length - 1] === "joined");
     expect(a.conn.playerId).toBe(0);
     await until("ticks to advance", () => gameB.viewState(performance.now())!.tick > tickBefore + 6);
     await until("A snapshots after rejoin", () => (a.conn.nextInputSeq() ?? 0) > 0);
-  }, 20_000);
+  }, 120_000);
 });

@@ -56,6 +56,7 @@ interface JoinParams {
   room: string;
   pin: string;
   name: string;
+  startRound?: number;
 }
 
 /**
@@ -122,13 +123,14 @@ export class Connection {
     return this.state;
   }
 
-  join(room: string, pin: string, name: string, rejoinToken?: string): Promise<{ playerId: 0 | 1; rejoinToken: string }> {
+  join(room: string, pin: string, name: string, rejoinToken?: string, startRound?: number): Promise<{ playerId: 0 | 1; rejoinToken: string }> {
     this.teardown();
     const stale = this.pending;
     this.pending = null;
     stale?.reject(new NetError("closed"));
     const code = room.trim().toUpperCase();
     this.params = { room: code, pin, name };
+    if (startRound !== undefined) this.params.startRound = startRound; // dev shortcut; the server ignores it unless ALLOW_DEV
     this.token = rejoinToken ?? this.loadToken(code);
     this.attempt = 0;
     this.seat = null;
@@ -199,6 +201,7 @@ export class Connection {
       if (this.socket !== sock) return;
       const msg: ClientMsg = { t: "join", room: params.room, pin: params.pin, name: params.name };
       if (this.token) msg.rejoinToken = this.token;
+      if (params.startRound !== undefined) msg.startRound = params.startRound;
       this.send(msg);
     };
     sock.onmessage = (ev) => {

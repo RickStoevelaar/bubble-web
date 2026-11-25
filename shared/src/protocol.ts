@@ -2,7 +2,7 @@ import type { GameState, SimEvent } from "./types";
 
 /** Messages a client may send. `seq` starts at 1 and must strictly increase. */
 export type ClientMsg =
-  | { t: "join"; room: string; pin: string; name: string; rejoinToken?: string }
+  | { t: "join"; room: string; pin: string; name: string; rejoinToken?: string; startRound?: number }
   | { t: "input"; seq: number; buttons: number }
   | { t: "continue"; accept: boolean };
 

@@ -1,12 +1,13 @@
 import { createServer as createHttpServer } from "node:http";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { GAME_LEVELS, validateLevel } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { WebSocketServer } from "ws";
-import { HighScores, UnlockStore, createFilePersist, dataDir, highScoresFile, unlocksFile } from "./persist";
+import { HIGHSCORE_CAP, HighScores, UnlockStore, createFilePersist, dataDir, highScoresFile, unlocksFile } from "./persist";
+import type { ScoreEntry } from "./persist";
 import { realTimers } from "./room";
 import type { Timers, UnlockSink } from "./room";
 import { RoomManager } from "./rooms";
@@ -43,6 +44,8 @@ export interface ServerConfig {
   /** Heartbeat timers/interval, injectable for tests. */
   timers?: Timers;
   heartbeatMs?: number;
+  /** Dev shortcut (env ALLOW_DEV=1): lets a join that creates a new room choose its start round. */
+  allowDev?: boolean;
   /** Unlock store; a real one on the data directory by default. */
   unlocks?: UnlockSink;
 }
@@ -58,7 +61,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig & { port: numbe
   if (!env.PIN) throw new Error("PIN environment variable is required (the shared room PIN) and must not be empty");
   const port = env.PORT ? Number(env.PORT) : 8080;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`invalid PORT: ${env.PORT}`);
-  return { pin: env.PIN, port, dataDir: dataDir(env), trustProxy: env.TRUST_PROXY === "1" };
+  return { pin: env.PIN, port, dataDir: dataDir(env), trustProxy: env.TRUST_PROXY === "1", allowDev: env.ALLOW_DEV === "1" };
 }
 
 function clientIp(req: IncomingMessage, trustProxy: boolean): string {
@@ -70,14 +73,43 @@ function clientIp(req: IncomingMessage, trustProxy: boolean): string {
   return req.socket.remoteAddress ?? "unknown";
 }
 
+/**
+ * GET/HEAD /scores: the public top-20 table as JSON. Only names, score, round and date are exposed (fields are
+ * copied one by one, so nothing else in the file can leak). A read problem is an empty table, never an error.
+ */
+function serveScores(store: HighScores, req: IncomingMessage, res: ServerResponse): void {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, { allow: "GET, HEAD", "cache-control": "no-store" });
+    return void res.end();
+  }
+  let scores: ScoreEntry[] = [];
+  try {
+    scores = store
+      .list()
+      .slice(0, HIGHSCORE_CAP)
+      .map((e) => ({ names: e.names.map(String), score: e.score, round: e.round, date: e.date }));
+  } catch {
+    scores = [];
+  }
+  const body = JSON.stringify({ scores });
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+    "cache-control": "no-store",
+  });
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
 export async function createServer(config: ServerConfig): Promise<RunningServer> {
   if (!config.pin) throw new Error("PIN is required");
   const dir = config.dataDir ?? dataDir();
   const levels = config.levels ?? loadLevels();
   validateLevelSet(levels);
+  const scores = new HighScores(highScoresFile(dir));
   const manager = new RoomManager(levels, createFilePersist(dir), {
     pin: config.pin,
-    scores: new HighScores(highScoresFile(dir)),
+    allowDev: config.allowDev === true,
+    scores,
     unlocks: config.unlocks ?? new UnlockStore(unlocksFile(dir)),
   });
   const staticRoot = config.staticRoot ?? DEFAULT_STATIC_ROOT;
@@ -90,6 +122,7 @@ export async function createServer(config: ServerConfig): Promise<RunningServer>
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
         return void res.end("ok");
       }
+      if (req.url?.split("?")[0] === "/scores") return serveScores(scores, req, res);
       serveStatic(staticRoot, req, res);
     } catch {
       try {
