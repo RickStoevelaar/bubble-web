@@ -18,7 +18,7 @@ export const GRID_H = 28;
  */
 export const TUNING = {
   walkSpeed: 1.0,
-  jumpVel: -2.6,
+  jumpVel: -3.6,
   gravity: 0.12,
   maxFall: 3.2,
   fireCooldownTicks: 18,
