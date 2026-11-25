@@ -21,7 +21,7 @@ import {
   typedLines,
   typedPrefix,
 } from "../src/screens/ending-timeline";
-import { SUPER_CODE_KEY, readSuperCode, rememberSuperCode } from "../src/screens/super-code";
+import { SUPER_CODE_KEY, RememberOnce, readSuperCode, rememberSuperCode } from "../src/screens/super-code";
 import { fontSafe } from "../src/screens/text";
 
 const KINDS = ["bad", "true"] as const;
@@ -193,5 +193,25 @@ describe("remembered code", () => {
     expect(() => rememberSuperCode(null, SUPER_CODE)).not.toThrow();
     expect(readSuperCode(bad, SUPER_CODE)).toBeNull();
     expect(readSuperCode(null, SUPER_CODE)).toBeNull();
+  });
+});
+
+describe("RememberOnce (the ending screen calls it every frame)", () => {
+  it("writes once per ending-screen entry, not once per frame", () => {
+    let writes = 0;
+    const store = { getItem: () => null, setItem: () => void writes++ };
+    const once = new RememberOnce(store, SUPER_CODE);
+    for (let i = 0; i < 300; i++) once.touch();
+    expect(writes).toBe(1);
+    once.reset(); // entering the ending screen again
+    for (let i = 0; i < 300; i++) once.touch();
+    expect(writes).toBe(2);
+  });
+  it("a failed write is not retried every frame either", () => {
+    let tries = 0;
+    const store = { getItem: () => null, setItem: () => { tries++; throw new Error("quota"); } };
+    const once = new RememberOnce(store, SUPER_CODE);
+    for (let i = 0; i < 50; i++) once.touch();
+    expect(tries).toBe(1);
   });
 });

@@ -184,6 +184,26 @@ describe("Connection join", () => {
   });
 });
 
+describe("Connection onJoined", () => {
+  it("reports the seat of every joined message, the first join and each rejoin, before the joined state", async () => {
+    const env = makeEnv();
+    const c = new Connection("ws://x/ws", env.deps);
+    const log: string[] = [];
+    c.onJoined((id) => log.push(`seat${id}`));
+    c.onState((st) => log.push(st));
+    const p = c.join("FAM", "pin", "Rick");
+    env.last.open();
+    env.last.recv(joined(0, "tokA"));
+    await p;
+    env.last.drop();
+    env.advance(500);
+    env.last.open();
+    env.last.recv(joined(1, "tokB")); // after a suspend the server may seat us elsewhere
+    expect(log).toEqual(["connecting", "seat0", "joined", "reconnecting", "seat1", "joined"]);
+    c.close();
+  });
+});
+
 describe("Connection reconnect", () => {
   it("goes connecting -> joined -> reconnecting -> joined and rejoins with the token", async () => {
     const env = makeEnv();

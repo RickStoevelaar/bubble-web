@@ -15,6 +15,26 @@ export function rememberSuperCode(store: CodeStore | null, code: string): void {
   }
 }
 
+/**
+ * The ending screen draws every frame: this writes the code once per ending-screen entry (`reset()` on entry),
+ * whether or not the write succeeded.
+ */
+export class RememberOnce {
+  private done = false;
+  constructor(
+    private readonly store: CodeStore | null,
+    private readonly code: string,
+  ) {}
+  reset(): void {
+    this.done = false;
+  }
+  touch(): void {
+    if (this.done) return;
+    this.done = true;
+    rememberSuperCode(this.store, this.code);
+  }
+}
+
 /** The remembered code, only if it is exactly the real one (so nothing else can ever reach the page). */
 export function readSuperCode(store: Pick<CodeStore, "getItem"> | null, real: string): string | null {
   try {

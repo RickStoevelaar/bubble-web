@@ -101,6 +101,7 @@ export class Connection {
   private readonly snapCbs: ((m: SnapMsg) => void)[] = [];
   private readonly errCbs: ((code: ErrCode) => void)[] = [];
   private readonly peerCbs: ((m: PeerMsg) => void)[] = [];
+  private readonly joinedCbs: ((playerId: 0 | 1) => void)[] = [];
   private readonly stateCbs: ((s: ConnState) => void)[] = [];
 
   constructor(
@@ -170,6 +171,10 @@ export class Connection {
   }
   onPeer(cb: (m: PeerMsg) => void): void {
     this.peerCbs.push(cb);
+  }
+  /** Called with the seat of EVERY `joined` message (first join and each rejoin), just before the "joined" state is announced. */
+  onJoined(cb: (playerId: 0 | 1) => void): void {
+    this.joinedCbs.push(cb);
   }
   onState(cb: (s: ConnState) => void): void {
     this.stateCbs.push(cb);
@@ -242,6 +247,7 @@ export class Connection {
         this.attempt = 0;
         this.synced = false;
         this.clearJoinTimer();
+        for (const cb of this.joinedCbs) this.safely(() => cb(j.playerId));
         this.setState("joined");
         this.armWatchdog(STALL_MS);
         const p = this.pending;

@@ -16,6 +16,7 @@ const key = (k: string, extra: object = {}) => ({ key: k, preventDefault() {}, .
 
 class FakeGame {
   resyncs = 0;
+  constructor(readonly localPlayer: 0 | 1 = 0) {}
   resync(): void {
     this.resyncs++;
   }
@@ -188,5 +189,27 @@ describe("keys: held keys and mute", () => {
     expect(acts).toEqual([]);
     t.fire("keydown", key("Enter"));
     expect(acts).toEqual(["back"]);
+  });
+});
+
+describe("Flow: a rejoin that seats us as the other hero", () => {
+  it("replaces the game with one for the new hero; the same hero keeps the game", () => {
+    const s = setup();
+    s.flow.go({ t: "start" });
+    s.joinOk();
+    const first = s.flow.game!;
+    const make = (id: 0 | 1) => new FakeGame(id);
+    expect(s.flow.reseat(0, make)).toBe(false);
+    expect(s.flow.game).toBe(first);
+    expect(s.flow.reseat(1, make)).toBe(true);
+    expect(s.flow.game).not.toBe(first);
+    expect(s.flow.game!.localPlayer).toBe(1);
+    expect(s.flow.reseat(1, make)).toBe(false);
+  });
+
+  it("does nothing before a game exists (the first join builds it)", () => {
+    const s = setup();
+    expect(s.flow.reseat(1, (id) => new FakeGame(id))).toBe(false);
+    expect(s.flow.game).toBeNull();
   });
 });

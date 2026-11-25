@@ -26,7 +26,7 @@ import { render } from "./render/renderer";
 import { buildSheet } from "./render/sprites";
 import { drawEnding, endingDone, endingKind } from "./screens/ending";
 import { CODE_START_TICKS, EndingClock, canSkip } from "./screens/ending-timeline";
-import { rememberSuperCode } from "./screens/super-code";
+import { RememberOnce } from "./screens/super-code";
 import { Flow } from "./screens/flow";
 import { ContinuePrompt, GameOverPanel, drawGameOver } from "./screens/gameover";
 import { installEndingSkip, installScoresInput, installTitleStart, parseDevRound } from "./screens/input";
@@ -89,6 +89,8 @@ function boot(): void {
   let ownRun: OwnRun | null = null;
   let lastView: GameState | null = null;
   const seatNames: (string | undefined)[] = [undefined, undefined];
+  let ownName: string | undefined;
+  const codeMemory = new RememberOnce(localStore(), SUPER_CODE);
   let disposeScreen: (() => void) | null = null;
   /** The ending scene clock: the server's endingTicks, or elapsed client time if that counter stalls. */
   let endingClock = new EndingClock();
@@ -178,18 +180,10 @@ function boot(): void {
       join.setConnecting(true);
       p.then(({ playerId }) => {
         join.remember(v);
+        ownName = serverName(v.name);
         seatNames.fill(undefined);
-        seatNames[playerId] = serverName(v.name);
-        const g = new ClientGame({ levels: GAME_LEVELS, playerId });
-        flow.game = g;
-        const local = playerId;
-        g.onEvents((events) => {
-          const now = performance.now();
-          for (const e of events) {
-            const sfx = sfxForEvent(e, { localPlayer: local, now, state: mapperState });
-            if (sfx) audio.playSfx(sfx);
-          }
-        });
+        seatNames[playerId] = ownName;
+        flow.game = makeGame(playerId);
         audio.playSfx("join");
         ensureSampler();
         join.setConnecting(false);
@@ -220,6 +214,25 @@ function boot(): void {
       if (conn.connectionState !== "connecting") join.setError(v.errorText);
     }
   };
+
+  /** A game for one hero; its sfx mapper is bound to that hero (a different seat means a different game). */
+  const makeGame = (playerId: 0 | 1): ClientGame => {
+    const g = new ClientGame({ levels: GAME_LEVELS, playerId });
+    g.onEvents((events) => {
+      const now = performance.now();
+      for (const e of events) {
+        const sfx = sfxForEvent(e, { localPlayer: g.localPlayer, now, state: mapperState });
+        if (sfx) audio.playSfx(sfx);
+      }
+    });
+    return g;
+  };
+  // After a suspend/restart the server may seat us as the other hero: retarget prediction, marker, sfx and names.
+  conn.onJoined((playerId) => {
+    if (!flow.reseat(playerId, makeGame)) return;
+    seatNames.fill(undefined);
+    seatNames[playerId] = ownName; // the partner's name arrives with the peer message that follows `joined`
+  });
 
   conn.onSnap((m) => {
     flow.game?.onSnapshot(m);
@@ -289,6 +302,7 @@ function boot(): void {
         panel.show();
         break;
       case "ending":
+        codeMemory.reset();
         endingClock = new EndingClock();
         endingTicksNow = 0;
         disposeScreen = installEndingSkip(
@@ -389,7 +403,7 @@ function boot(): void {
           endingTicksNow = endingClock.at(view.endingTicks, now);
           drawEnding(ctx, sheet, view, endingTicksNow, kind);
           // the code was on screen: keep it for the join form's hint (a convenience, never required)
-          if (kind === "true" && endingTicksNow >= CODE_START_TICKS) rememberSuperCode(localStore(), SUPER_CODE);
+          if (kind === "true" && endingTicksNow >= CODE_START_TICKS) codeMemory.touch();
           if (endingDone(endingTicksNow, kind)) flow.go({ t: "endingDone" });
         }
         break;

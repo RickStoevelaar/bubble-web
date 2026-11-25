@@ -15,7 +15,7 @@ export interface FlowPanel {
  * joined, the current game object, and the connection side effects of screen changes. Kept free of the DOM so it
  * can be tested with fakes; main.ts supplies the visual part through `onEnter`.
  */
-export class Flow<G extends { resync(): void }> {
+export class Flow<G extends { resync(): void; readonly localPlayer: 0 | 1 }> {
   screen: Screen = "title";
   /** True once a join succeeded in the CURRENT session; reset by a fresh join and on the title. */
   everJoined = false;
@@ -48,6 +48,17 @@ export class Flow<G extends { resync(): void }> {
   /** A fresh join attempt starts a new session: nothing of the old one (game, rejoin bookkeeping) survives. */
   beginJoin(): void {
     this.resetSession();
+  }
+
+  /**
+   * A `joined` message seated us as `playerId`. After a suspend or server restart the server may hand the seat to the
+   * other hero; a game built for the old hero would predict and mark the wrong one, so it is replaced. Returns true
+   * when the game was replaced. With no game yet (the first join) nothing happens: the join handler builds it.
+   */
+  reseat(playerId: 0 | 1, make: (playerId: 0 | 1) => G): boolean {
+    if (!this.game || this.game.localPlayer === playerId) return false;
+    this.game = make(playerId);
+    return true;
   }
 
   /** The connection state changed. */
