@@ -3,6 +3,8 @@ import { BTN } from "@bubble/shared";
 /** Anything that can report the current button bitmask (BTN.L|R|J|F) once per tick. */
 export interface InputSource {
   sample(): number;
+  /** Forget any held buttons (page hidden or blurred: key-up events may be lost). */
+  reset?(): void;
 }
 
 const KEY_BUTTON: Record<string, number> = {
@@ -48,6 +50,10 @@ export class KeyboardInput implements InputSource {
     let buttons = 0;
     for (const code of this.down) buttons |= KEY_BUTTON[code]!;
     return buttons;
+  }
+
+  reset(): void {
+    this.down.clear();
   }
 
   dispose(): void {

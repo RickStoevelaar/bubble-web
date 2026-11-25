@@ -41,6 +41,10 @@ export class NetError extends Error {
 
 const OPEN = 1;
 const JOIN_TIMEOUT_MS = 8000;
+/** A joined socket that delivers nothing for this long is treated as dead (snapshots come at 20 Hz). */
+export const STALL_MS = 3000;
+/** A (re)connect attempt that has not reached "joined" within this long is abandoned and retried. */
+export const CONNECT_STALL_MS = 8000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 8000;
 const JITTER = 0.2;
@@ -84,6 +88,7 @@ export class Connection {
   private attempt = 0;
   private reconnectTimer: unknown = null;
   private joinTimer: unknown = null;
+  private watchdog: unknown = null;
   private pending: { resolve: (v: { playerId: 0 | 1; rejoinToken: string }) => void; reject: (e: NetError) => void } | null =
     null;
   /** Next input seq to hand out; only valid once `synced`. */
@@ -189,6 +194,7 @@ export class Connection {
       return;
     }
     this.socket = sock;
+    this.armWatchdog(CONNECT_STALL_MS);
     sock.onopen = () => {
       if (this.socket !== sock) return;
       const msg: ClientMsg = { t: "join", room: params.room, pin: params.pin, name: params.name };
@@ -196,7 +202,9 @@ export class Connection {
       this.send(msg);
     };
     sock.onmessage = (ev) => {
-      if (this.socket === sock) this.handle(ev.data);
+      if (this.socket !== sock) return;
+      this.armWatchdog(this.state === "joined" ? STALL_MS : CONNECT_STALL_MS);
+      this.handle(ev.data);
     };
     sock.onerror = () => {
       /* the close event that follows drives reconnect */
@@ -232,6 +240,7 @@ export class Connection {
         this.synced = false;
         this.clearJoinTimer();
         this.setState("joined");
+        this.armWatchdog(STALL_MS);
         const p = this.pending;
         this.pending = null;
         p?.resolve({ playerId: j.playerId, rejoinToken: j.rejoinToken });
@@ -292,6 +301,7 @@ export class Connection {
 
   private scheduleReconnect(delayMs: number): void {
     if (this.state === "closed" || this.reconnectTimer !== null) return;
+    this.clearWatchdog();
     if (this.state === "joined") this.setState("reconnecting");
     this.reconnectTimer = this.setTimer(() => {
       this.reconnectTimer = null;
@@ -311,6 +321,7 @@ export class Connection {
   /** Stops timers and detaches/closes the socket; leaves callbacks and state alone. */
   private teardown(): void {
     this.clearJoinTimer();
+    this.clearWatchdog();
     if (this.reconnectTimer !== null) {
       this.clearTimer(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -328,6 +339,25 @@ export class Connection {
       sock.close();
     } catch {
       /* already closed */
+    }
+  }
+
+  /** (Re)starts the liveness timer: if it fires, the socket is considered dead and replaced. */
+  private armWatchdog(ms: number): void {
+    this.clearWatchdog();
+    this.watchdog = this.setTimer(() => {
+      this.watchdog = null;
+      if (this.state === "closed" || this.socket === null) return;
+      this.dropSocket();
+      this.synced = false;
+      this.scheduleReconnect(this.backoffDelay());
+    }, ms);
+  }
+
+  private clearWatchdog(): void {
+    if (this.watchdog !== null) {
+      this.clearTimer(this.watchdog);
+      this.watchdog = null;
     }
   }
 

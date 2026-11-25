@@ -23,6 +23,8 @@ export interface ClientGameOptions {
 const MAX_SNAPSHOTS = 4;
 /** Oldest unacknowledged inputs are dropped beyond this many (2 s at 60 Hz). */
 const MAX_PENDING = 120;
+/** A snapshot more than this many ticks behind the newest means the server restarted or restored: resync. */
+const RESYNC_TICK_GAP = 60;
 /** Beyond this per-axis jump an entity is considered teleported (wrap, respawn): no tweening. */
 const MAX_TWEEN_DELTA = 64;
 /** Extrapolate at most one snapshot interval past the newest snapshot. */
@@ -116,10 +118,14 @@ export class ClientGame {
   /** Call after a (re)join: the next snapshot is accepted even if its tick is lower (restored save). */
   resync(): void {
     this.resyncNext = true;
+    this.pending = [];
+    this.predicted = null;
+    this.errX = this.errY = 0;
   }
 
   onSnapshot(msg: SnapMsg): void {
     const newest = this.snaps[this.snaps.length - 1];
+    if (!this.resyncNext && newest && msg.tick < newest.tick - RESYNC_TICK_GAP) this.resync();
     if (!this.resyncNext && newest && msg.tick <= newest.tick) return; // duplicate or stale
     if (this.resyncNext) {
       this.snaps = [];

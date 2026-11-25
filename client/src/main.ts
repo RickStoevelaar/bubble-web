@@ -1,24 +1,14 @@
-import { FIELD_H, FIELD_W, LEVELS, TICK_RATE } from "@bubble/shared";
+import { FIELD_H, FIELD_W, LEVELS } from "@bubble/shared";
 import { ClientGame } from "./game";
-import { KeyboardInput, type InputSource } from "./input";
-import { Connection, NetError, type ConnState, type ErrCode } from "./net";
+import { KeyboardInput } from "./input";
+import { Connection, NetError, type ConnState } from "./net";
+import { Sampler, watchLifecycle } from "./sampler";
+import { viewOf, type ShownError } from "./status";
 import { computeLayout } from "./render/layout";
 import { render } from "./render/renderer";
 import { buildSheet } from "./render/sprites";
 
-const TICK_MS = 1000 / TICK_RATE;
-/** After a stall (hidden tab, GC) run at most this many catch-up ticks instead of a burst. */
-const MAX_CATCHUP_TICKS = 4;
 const FORM_KEY = "bubble.form";
-
-const ERROR_TEXT: Record<ErrCode | "timeout" | "closed", string> = {
-  badpin: "That PIN is not right.",
-  full: "That room already has two players.",
-  ratelimit: "Too many tries. Wait a minute and try again.",
-  badmsg: "The server did not understand the game. Please reload the page.",
-  timeout: "Could not reach the server. Check your connection and try again.",
-  closed: "The connection was closed.",
-};
 
 function wsUrl(): string {
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
@@ -101,41 +91,53 @@ function boot(): void {
   const conn = new Connection(wsUrl());
   let game: ClientGame | null = null;
   let everJoined = false;
+  let lastError: ShownError | null = null;
+
+  /** The one place that decides what is visible: join form, banner text, or neither. */
+  const applyView = (): void => {
+    const v = viewOf({ state: conn.connectionState, everJoined, error: lastError });
+    const wasHidden = overlay.hidden;
+    overlay.hidden = !v.showJoin;
+    errorBox.textContent = v.errorText ?? "";
+    goButton.disabled = conn.connectionState === "connecting";
+    status.hidden = v.statusText === null;
+    status.textContent = v.statusText ?? "";
+    if (wasHidden && v.showJoin) {
+      pinInput.value = ""; // the session ended: ask for the PIN again
+      pinInput.focus();
+    }
+  };
+
   conn.onSnap((m) => game?.onSnapshot(m));
   conn.onState((s: ConnState) => {
-    if (s === "joined" && everJoined) game?.resync(); // rejoined: the server may have restored an older tick
-    if (s === "joined") everJoined = true;
-    status.hidden = s !== "reconnecting";
-    if (s === "reconnecting") status.textContent = "reconnecting…";
+    if (s === "joined") {
+      lastError = null;
+      if (everJoined) game?.resync(); // rejoined: undelivered inputs are gone, and the tick may have gone back
+      everJoined = true;
+    }
+    applyView();
   });
   conn.onError((code) => {
-    status.hidden = false;
-    status.textContent = ERROR_TEXT[code];
+    lastError = code;
+    applyView();
   });
 
   let looping = false;
-  function startLoop(input: InputSource): void {
+  function startLoop(): void {
     if (looping) return;
     looping = true;
-    let last = performance.now();
-    let acc = 0;
-
-    const tick = (): void => {
-      const g = game;
-      if (!g) return;
-      const seq = conn.nextInputSeq();
-      if (seq === undefined) return; // not joined / waiting for the first snapshot after a (re)join
-      const buttons = input.sample();
-      if (conn.sendInput(seq, buttons)) g.pushInput(seq, buttons);
-    };
+    const input = new KeyboardInput(window);
+    const sampler = new Sampler({
+      input,
+      nextSeq: () => conn.nextInputSeq(),
+      send: (seq, buttons) => conn.sendInput(seq, buttons),
+      push: (seq, buttons) => game?.pushInput(seq, buttons),
+    });
+    sampler.setActive(!document.hidden);
+    watchLifecycle(window, document, (active) => sampler.setActive(active));
 
     const frame = (now: number): void => {
-      acc = Math.min(acc + (now - last), TICK_MS * MAX_CATCHUP_TICKS);
-      last = now;
-      while (acc >= TICK_MS) {
-        tick();
-        acc -= TICK_MS;
-      }
+      sampler.frame(now);
       const view = game?.viewState(now);
       if (game && view) render(ctx, sheet, view, LEVELS, game.localPlayer);
       requestAnimationFrame(frame);
@@ -148,21 +150,19 @@ function boot(): void {
     const room = roomInput.value.trim().toUpperCase();
     roomInput.value = room;
     const name = nameInput.value.trim();
-    errorBox.textContent = "";
-    goButton.disabled = true;
-    conn
-      .join(room, pinInput.value, name)
-      .then(({ playerId }) => {
-        saveForm({ room, pin: pinInput.value, name });
-        game = new ClientGame({ levels: LEVELS, playerId });
-        overlay.hidden = true;
-        startLoop(new KeyboardInput(window));
-      })
-      .catch((err: unknown) => {
-        errorBox.textContent = ERROR_TEXT[err instanceof NetError ? err.code : "closed"];
-        goButton.disabled = false;
-      });
+    lastError = null;
+    const p = conn.join(room, pinInput.value, name);
+    applyView(); // "connecting": disables the button
+    p.then(({ playerId }) => {
+      saveForm({ room, pin: pinInput.value, name });
+      game = new ClientGame({ levels: LEVELS, playerId });
+      startLoop();
+    }).catch((err: unknown) => {
+      lastError = err instanceof NetError ? err.code : "closed";
+      applyView();
+    });
   });
+  applyView();
 }
 
 boot();

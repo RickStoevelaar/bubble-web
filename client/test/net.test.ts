@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ClientMsg, GameState, ServerMsg } from "@bubble/shared";
-import { Connection, NetError, type StorageLike, type WebSocketLike } from "../src/net";
+import { CONNECT_STALL_MS, Connection, NetError, STALL_MS, type StorageLike, type WebSocketLike } from "../src/net";
 
 class FakeSocket implements WebSocketLike {
   readyState = 0;
@@ -175,11 +175,12 @@ describe("Connection join", () => {
     expect(env.timers.size).toBe(0);
   });
 
-  it("clears the join timeout once joined", async () => {
+  it("clears the join timeout once joined (only the liveness watchdog remains)", async () => {
     const env = makeEnv();
     const c = await joinedConn(env);
-    expect(env.timers.size).toBe(0);
+    expect(env.timers.size).toBe(1);
     c.close();
+    expect(env.timers.size).toBe(0);
   });
 });
 
@@ -411,5 +412,117 @@ describe("Connection input and snapshots", () => {
     c.continue(true);
     expect(env.last.sent.at(-1)).toEqual({ t: "continue", accept: true });
     c.close();
+  });
+});
+
+const alive = (env: ReturnType<typeof makeEnv>) => env.sockets.filter((s) => s.readyState !== 3).length;
+
+describe("Connection liveness watchdog", () => {
+  it("treats 3 s without any server message as a dead socket and rejoins with the token", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env, "tokW");
+    const states: string[] = [];
+    c.onState((s) => states.push(s));
+    env.advance(STALL_MS - 1);
+    expect(env.sockets.length).toBe(1);
+    expect(states).toEqual([]);
+    env.advance(1);
+    expect(states).toEqual(["reconnecting"]);
+    expect(env.sockets[0]!.closedByClient).toBe(true);
+    expect(alive(env)).toBe(0);
+    env.advance(500);
+    expect(env.sockets.length).toBe(2);
+    expect(alive(env)).toBe(1);
+    env.last.open();
+    expect(env.last.joins()[0]!.rejoinToken).toBe("tokW");
+    env.last.recv(joined(0, "tokW"));
+    expect(states).toEqual(["reconnecting", "joined"]);
+    c.close();
+    expect(env.timers.size).toBe(0);
+  });
+
+  it("stays alive while snapshots keep arriving", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env);
+    for (let i = 0; i < 200; i++) {
+      env.last.recv(snap(i, 0));
+      env.advance(50);
+    }
+    expect(env.sockets.length).toBe(1);
+    expect(c.connectionState).toBe("joined");
+    c.close();
+  });
+
+  it("drops a reconnect socket that opens but never answers joined, then retries with backoff", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env);
+    env.last.drop();
+    env.advance(500);
+    expect(env.sockets.length).toBe(2);
+    env.last.open();
+    env.advance(CONNECT_STALL_MS - 1);
+    expect(env.sockets[1]!.closedByClient).toBe(false);
+    env.advance(1);
+    expect(env.sockets[1]!.closedByClient).toBe(true);
+    expect(alive(env)).toBe(0);
+    env.advance(999);
+    expect(env.sockets.length).toBe(2);
+    env.advance(1); // second backoff step: 1 s
+    expect(env.sockets.length).toBe(3);
+    expect(alive(env)).toBe(1);
+    env.last.open();
+    expect(env.last.joins()[0]!.rejoinToken).toBe("tok1");
+    c.close();
+    expect(env.timers.size).toBe(0);
+  });
+
+  it("any inbound message resets the connect budget", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env);
+    env.last.drop();
+    env.advance(500);
+    env.last.open();
+    env.advance(7000);
+    env.last.recv("junk");
+    env.advance(7999);
+    expect(env.sockets[1]!.closedByClient).toBe(false);
+    env.advance(1);
+    expect(env.sockets[1]!.closedByClient).toBe(true);
+    c.close();
+  });
+
+  it("never has two live sockets across repeated stalls", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env);
+    for (let i = 0; i < 20; i++) {
+      env.advance(500);
+      expect(alive(env)).toBeLessThanOrEqual(1);
+      env.advance(2000);
+      expect(alive(env)).toBeLessThanOrEqual(1);
+    }
+    c.close();
+    expect(env.timers.size).toBe(0);
+  });
+
+  it("close() during connecting leaves no timers", async () => {
+    const env = makeEnv();
+    const c = new Connection("ws://x/ws", env.deps);
+    const caught = c.join("FAM", "pin", "Rick").catch((e: unknown) => e);
+    env.last.open();
+    c.close();
+    expect(await caught).toMatchObject({ code: "closed" });
+    expect(env.timers.size).toBe(0);
+    env.advance(60_000);
+    expect(env.sockets.length).toBe(1);
+  });
+
+  it("close() during a reconnect attempt leaves no timers", async () => {
+    const env = makeEnv();
+    const c = await joinedConn(env);
+    env.last.drop();
+    env.advance(500);
+    expect(env.sockets.length).toBe(2);
+    c.close();
+    expect(env.timers.size).toBe(0);
   });
 });

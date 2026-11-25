@@ -212,6 +212,52 @@ describe("ClientGame interpolation", () => {
     expect(game.viewState(500)!.tick).toBe(30);
   });
 
+  it("resyncs when the tick drops by more than 60 without resync() being called", () => {
+    const { game, at } = setup();
+    const a = baseState();
+    a.enemies = [enemy({ x: 100 })];
+    at(0);
+    game.onSnapshot(snap(600, 0, a));
+    at(50);
+    game.onSnapshot(snap(603, 0, a));
+    game.pushInput(1, BTN.R);
+    const b = baseState();
+    b.enemies = [enemy({ x: 50 })];
+    at(100);
+    game.onSnapshot(snap(30, 0, b)); // 573 behind: server restarted from an older save
+    expect(game.viewState(1000)!.tick).toBe(30);
+    expect(game.pendingCount).toBe(0);
+    // history was dropped, so following snapshots interpolate normally
+    const c = baseState();
+    c.enemies = [enemy({ x: 60 })];
+    at(150);
+    game.onSnapshot(snap(33, 0, c));
+    expect(game.viewState(175)!.enemies[0]!.x).toBe(55);
+  });
+
+  it("still discards small backward steps (duplicates, out of order)", () => {
+    const { game, at } = setup();
+    at(0);
+    game.onSnapshot(snap(600, 0, baseState()));
+    at(10);
+    game.onSnapshot(snap(540, 0, baseState())); // exactly 60 behind: not a reset
+    game.onSnapshot(snap(597, 0, baseState()));
+    expect(game.viewState(500)!.tick).toBe(600);
+  });
+
+  it("resync() drops pending inputs that were never delivered", () => {
+    const { game } = setup();
+    const s = baseState();
+    const x0 = s.players[0]!.x;
+    for (let i = 1; i <= 5; i++) game.pushInput(i, BTN.R);
+    game.resync();
+    expect(game.pendingCount).toBe(0);
+    game.onSnapshot(snap(3, 0, s));
+    expect(game.viewState(0)!.players[0]!.x).toBe(x0);
+    game.pushInput(6, BTN.R);
+    expect(game.viewState(0)!.players[0]!.x).toBeCloseTo(x0 + 1, 9);
+  });
+
   it("uses the same level array and keeps a stable result shape for unknown rounds", () => {
     const { game } = setup();
     const s = baseState();
