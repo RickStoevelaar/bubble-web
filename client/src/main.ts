@@ -25,10 +25,11 @@ import { computeLayout } from "./render/layout";
 import { render } from "./render/renderer";
 import { buildSheet } from "./render/sprites";
 import { drawEnding, endingDone } from "./screens/ending";
+import { Flow } from "./screens/flow";
 import { ContinuePrompt, GameOverPanel, drawGameOver } from "./screens/gameover";
 import { installScoresInput, installTitleStart, parseDevRound } from "./screens/input";
 import { JoinForm } from "./screens/join-form";
-import { next, type Screen, type ScreenEvent } from "./screens/machine";
+import type { Screen } from "./screens/machine";
 import { planScreenLayout } from "./screens/plan";
 import { drawScores, fetchScores, matchOwn, turnPage, type OwnRun, type ScoresData } from "./screens/scores";
 import { drawTitle } from "./screens/title";
@@ -79,7 +80,6 @@ function boot(): void {
   const mapperState = newMapperState();
 
   // --- the screen flow -----------------------------------------------------
-  let screen: Screen = "title";
   let screenSince = performance.now();
   let titleScores: ScoresData = { status: "loading" };
   let scoresData: ScoresData = { status: "loading" };
@@ -97,7 +97,7 @@ function boot(): void {
   let seenTouch = false;
   const coarse = window.matchMedia("(pointer: coarse)");
   const touch = new TouchInput(window, tracker, {
-    isEnabled: () => screen === "game",
+    isEnabled: () => flow.screen === "game",
     onTouch: () => {
       seenTouch = true;
       layout();
@@ -120,7 +120,7 @@ function boot(): void {
     canvas.style.height = `${l.fieldH}px`;
     ctx.setTransform(l.scale, 0, 0, l.scale, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    const plan = planScreenLayout(screen, l, w, h, coarse.matches || seenTouch, safeBottom());
+    const plan = planScreenLayout(flow.screen, l, w, h, coarse.matches || seenTouch, safeBottom());
     touch.setZones(plan.zones); // releases held touches if the zones moved under them (rotation)
     deckView.setLayout(plan.deckBox, dpr, plan.deckPassThrough);
     if (plan.actions) {
@@ -148,8 +148,6 @@ function boot(): void {
   // --- join form -----------------------------------------------------------
   const status = el<HTMLElement>("status");
   const conn = new Connection(wsUrl());
-  let game: ClientGame | null = null;
-  let everJoined = false;
   let lastError: ShownError | null = null;
 
   const join = new JoinForm(
@@ -170,15 +168,17 @@ function boot(): void {
     (v) => {
       lastError = null;
       join.setError(null);
+      flow.beginJoin(); // a fresh session: nothing of an earlier one (game, everJoined) survives
       const p = conn.join(v.room, v.pin, v.name, undefined, devRound ?? undefined);
       join.setConnecting(true);
       p.then(({ playerId }) => {
         join.remember(v);
         seatNames.fill(undefined);
         seatNames[playerId] = serverName(v.name);
-        game = new ClientGame({ levels: GAME_LEVELS, playerId });
+        const g = new ClientGame({ levels: GAME_LEVELS, playerId });
+        flow.game = g;
         const local = playerId;
-        game.onEvents((events) => {
+        g.onEvents((events) => {
           const now = performance.now();
           for (const e of events) {
             const sfx = sfxForEvent(e, { localPlayer: local, now, state: mapperState });
@@ -188,12 +188,12 @@ function boot(): void {
         audio.playSfx("join");
         ensureSampler();
         join.setConnecting(false);
-        go({ t: "joined" });
+        flow.go({ t: "joined" });
       }).catch((err: unknown) => {
         lastError = err instanceof NetError ? err.code : "closed";
         join.setConnecting(false);
         applyView();
-        go({ t: "joinFailed", err: lastError });
+        flow.go({ t: "joinFailed", err: lastError });
       });
     },
     () => {
@@ -201,41 +201,31 @@ function boot(): void {
       conn.close();
       lastError = null;
       join.setConnecting(false);
-      go({ t: "back" });
+      flow.go({ t: "back" });
     },
   );
 
   /** The one place that decides the banner text and the form's error line; the screen decides what is shown. */
   const applyView = (): void => {
-    const v = viewOf({ state: conn.connectionState, everJoined, error: lastError });
-    status.hidden = v.statusText === null || screen === "title" || screen === "scores";
+    const v = viewOf({ state: conn.connectionState, everJoined: flow.everJoined, error: lastError });
+    status.hidden = !flow.bannerVisible(v.statusText);
     status.textContent = v.statusText ?? "";
-    if (screen === "join") {
+    if (flow.screen === "join") {
       join.setConnecting(conn.connectionState === "connecting");
       if (conn.connectionState !== "connecting") join.setError(v.errorText);
     }
-    // The session ended for good after a join: back to the form with the message (reconnecting never gets here).
-    if (v.showJoin && everJoined && conn.connectionState === "closed") go({ t: "closedAfterJoin" });
   };
 
   conn.onSnap((m) => {
-    game?.onSnapshot(m);
-    go({ t: "phase", phase: m.state.phase, runOver: m.state.runOver });
+    flow.game?.onSnapshot(m);
+    flow.go({ t: "phase", phase: m.state.phase, runOver: m.state.runOver });
   });
   conn.onPeer((m) => {
     seatNames[m.playerId] = serverName(m.name);
   });
   conn.onState((s: ConnState) => {
-    if (s === "joined") {
-      lastError = null;
-      if (everJoined) game?.resync(); // rejoined: undelivered inputs are gone, and the tick may have gone back
-      everJoined = true;
-      // An answer sent into a dead socket is lost: offer the question again after a reconnect.
-      if (screen === "gameover") {
-        panel.hide();
-        panel.show();
-      }
-    }
+    if (s === "joined") lastError = null;
+    flow.connState(s); // resync on a rejoin, re-offer the game-over question, closed-after-join -> join form
     applyView();
   });
   conn.onError((code) => {
@@ -257,26 +247,21 @@ function boot(): void {
       clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       onAnswer: (accept) => {
         conn.continue(accept);
-        go({ t: accept ? "continued" : "declined" });
+        flow.go({ t: accept ? "continued" : "declined" });
       },
     }),
   );
 
   // --- screen transitions --------------------------------------------------
-  function go(ev: ScreenEvent): void {
-    const prev = screen;
-    const to = next(prev, ev);
-    if (to === prev) return;
+  const flow = new Flow<ClientGame>(conn, panel, (prev, to) => {
     disposeScreen?.();
     disposeScreen = null;
-    screen = to;
     screenSince = performance.now();
     enter(prev, to);
     layout(); // the deck, the canvas and the buttons follow the new screen
-  }
+  });
 
   function enter(prev: Screen, to: Screen): void {
-    if (to !== "gameover") panel.hide();
     if (to !== "join") join.hide();
     switch (to) {
       case "title":
@@ -285,13 +270,13 @@ function boot(): void {
         ownRun = null;
         titleScores = { status: "loading" };
         void fetchScores().then((d) => {
-          if (screen === "title") titleScores = d;
+          if (flow.screen === "title") titleScores = d;
         });
-        disposeScreen = installTitleStart(window, () => go({ t: "start" }));
+        disposeScreen = installTitleStart(window, () => flow.go({ t: "start" }));
         break;
       case "join":
         join.resetPin();
-        join.show(prev === "title" ? null : viewOf({ state: conn.connectionState, everJoined, error: lastError }).errorText);
+        join.show(prev === "title" ? null : viewOf({ state: conn.connectionState, everJoined: flow.everJoined, error: lastError }).errorText);
         break;
       case "game":
         break;
@@ -303,21 +288,20 @@ function boot(): void {
       case "scores": {
         if (prev === "gameover" || prev === "ending") {
           ownRun = lastView ? ownRunOf(lastView) : null;
-          conn.close(); // the run is over: leave the room (a closed state here is ignored by the flow)
         }
         scoresData = { status: "loading" };
         scoresPage = 0;
         void fetchScores().then((d) => {
-          if (screen !== "scores") return;
+          if (flow.screen !== "scores") return;
           scoresData = d;
           if (d.status === "ready") {
             const idx = matchOwn(d.rows, ownRun);
             scoresPage = idx >= 0 ? Math.floor(idx / 10) : 0;
           }
-          go({ t: "scoresShown" });
+          flow.go({ t: "scoresShown" });
         });
         disposeScreen = installScoresInput(window, canvas, (a) => {
-          if (a === "back") go({ t: "back" });
+          if (a === "back") flow.go({ t: "back" });
           else if (scoresData.status === "ready") scoresPage = turnPage(scoresPage, a, scoresData.rows.length);
         });
         break;
@@ -339,7 +323,7 @@ function boot(): void {
       input,
       nextSeq: () => conn.nextInputSeq(),
       send: (seq, buttons) => conn.sendInput(seq, buttons),
-      push: (seq, buttons) => game?.pushInput(seq, buttons),
+      push: (seq, buttons) => flow.game?.pushInput(seq, buttons),
     });
     s.setActive(!document.hidden);
     watchLifecycle(window, document, (active) => s.setActive(active));
@@ -349,6 +333,8 @@ function boot(): void {
   const frame = (now: number): void => {
     sampler?.frame(now);
     deckView.render(touch.pressed);
+    const game = flow.game;
+    const screen = flow.screen;
     const playing = screen === "game" || screen === "gameover" || screen === "ending";
     const view = playing ? (game?.viewState(now) ?? null) : null;
     if (view) lastView = view;
@@ -388,7 +374,7 @@ function boot(): void {
       case "ending":
         if (view) {
           drawEnding(ctx, sheet, view, view.endingTicks);
-          if (endingDone(view.endingTicks)) go({ t: "endingDone" });
+          if (endingDone(view.endingTicks)) flow.go({ t: "endingDone" });
         }
         break;
       case "scores":

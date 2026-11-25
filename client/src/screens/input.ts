@@ -22,6 +22,7 @@ const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "N
 export function isStartKey(e: { key: string; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean }): boolean {
   if (e.ctrlKey || e.altKey || e.metaKey) return false;
   if (MODIFIER_KEYS.has(e.key) || /^F\d{1,2}$/.test(e.key)) return false;
+  if (e.key === "m" || e.key === "M") return false; // the mute key
   return true;
 }
 
@@ -46,7 +47,7 @@ export function installTitleStart(target: EventTargetLike, onStart: () => void):
     if (!fromControl(e)) fire();
   };
   const onKey = (e: KeyboardEvent): void => {
-    if (!isStartKey(e) || fromControl(e)) return;
+    if (e.repeat || !isStartKey(e) || fromControl(e)) return;
     e.preventDefault(); // the key must not also be typed into the form that is about to appear
     fire();
   };
@@ -79,7 +80,7 @@ export function installScoresInput(
     if (a) onAction(a);
   };
   const onKey = (e: KeyboardEvent): void => {
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return; // a held key must not bounce through screens
     const a = scoresKey(e.key);
     if (!a) return;
     e.preventDefault();
