@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { BTN, FIELD_H, Sim, TEST_LEVEL, TILE, TUNING } from "../src";
 import type { SimEvent } from "../src";
 
-const newSim = (n: 1 | 2 = 1) => new Sim([TEST_LEVEL], 1, n);
+const newSim = (n: 1 | 2 = 1) => {
+  const sim = new Sim([TEST_LEVEL], 1, n);
+  sim.state.enemies = []; // TEST_LEVEL has a walker; these tests are about players
+  return sim;
+};
 const run = (sim: Sim, ticks: number, b0 = 0, b1 = 0): SimEvent[] => {
   const ev: SimEvent[] = [];
   for (let i = 0; i < ticks; i++) ev.push(...sim.step([b0, b1]));

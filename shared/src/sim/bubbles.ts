@@ -3,6 +3,7 @@ import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import { BTN } from "../types";
 import type { BubbleState, GameState, SimEvent } from "../types";
+import { bubbleTouchesEnemy, killTrapped, releaseTrapped, trapEnemy } from "./enemies";
 import { PLAYER_SIZE } from "./player";
 
 const R = TUNING.bubbleRadius;
@@ -23,6 +24,14 @@ function startFloat(b: BubbleState): void {
   b.phase = "float";
   b.vx = 0;
   b.vy = -TUNING.bubbleRise;
+}
+
+/** A launch-phase bubble captures the first active enemy it overlaps and starts floating. */
+function tryTrap(state: GameState, b: BubbleState): void {
+  const e = state.enemies.find((en) => en.state === "active" && bubbleTouchesEnemy(b, en));
+  if (!e) return;
+  trapEnemy(b, e);
+  startFloat(b);
 }
 
 /** Keeps a float-phase bubble inside walls and below the ceiling, above floors and inside the field (bubbles never wrap). */
@@ -67,8 +76,18 @@ export function stepBubbles(
     b.ageTicks++;
     if (b.ageTicks >= TUNING.bubbleLifeTicks) {
       dead.add(b.id);
+      releaseTrapped(state, b);
       events.push({ kind: "pop", x: b.x, y: b.y });
       continue;
+    }
+    if (b.trapped && b.phase === "float") {
+      b.trapped.escapeIn--;
+      if (b.trapped.escapeIn <= 0) {
+        dead.add(b.id);
+        releaseTrapped(state, b);
+        events.push({ kind: "pop", x: b.x, y: b.y });
+        continue;
+      }
     }
     if (b.phase === "launch") {
       const nx = b.x + b.vx;
@@ -79,6 +98,7 @@ export function stepBubbles(
         b.x = nx;
         if (b.ageTicks >= launchTicks(state, b)) startFloat(b);
       }
+      if (!b.trapped) tryTrap(state, b);
       continue;
     }
     const d = driftAt(lv, b);
@@ -134,6 +154,7 @@ export function stepBubbles(
         break;
       }
       dead.add(b.id);
+      killTrapped(state, b, p.id);
       events.push({ kind: "pop", player: p.id, x: b.x, y: b.y });
     }
   }

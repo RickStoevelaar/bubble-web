@@ -6,3 +6,5 @@ export * from "./types";
 export * from "./sim/player";
 export * from "./sim/sim";
 export * from "./sim/bubbles";
+export * from "./sim/enemies";
+export * from "./sim/physics";

@@ -2,9 +2,24 @@ import type { EnemyType } from "./level";
 
 export const BTN = { L: 1, R: 2, J: 4, F: 8 } as const;
 
-/** Placeholder; extended by the enemy task. */
+/** Enemy position: (x, y) is the CENTER of the TUNING.enemySize square body. */
 export interface EnemyState {
   id: number;
+  type: EnemyType;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  dir: 1 | -1;
+  state: "spawning" | "active" | "trapped" | "dead";
+  angry: boolean;
+  /** Ticks until a "spawning" enemy becomes active. */
+  spawnDelay: number;
+  onGround: boolean;
+  /** Set while a walker has chosen to walk off the ledge it is standing at. */
+  dropping?: boolean;
+  /** Ticks spent in the "dead" arc. */
+  deadTicks?: number;
 }
 export interface BubbleState {
   id: number;
@@ -17,7 +32,7 @@ export interface BubbleState {
   letter?: 0 | 1 | 2 | 3 | 4 | 5;
   phase: "launch" | "float";
   ageTicks: number;
-  trapped?: { type: EnemyType; escapeIn: number };
+  trapped?: { type: EnemyType; escapeIn: number; enemyId: number };
   owner: 0 | 1;
 }
 /** Placeholder; extended by the items task. */
@@ -41,6 +56,8 @@ export interface PlayerState {
   score: number;
   fireCooldown: number;
   invulnTicks: number;
+  /** Countdown for the "dying" and "respawning" states. */
+  stateTicks: number;
   onGround: boolean;
   powers: { speed: boolean; fastBubble: boolean; longBubble: boolean; rapidFire: boolean };
 }

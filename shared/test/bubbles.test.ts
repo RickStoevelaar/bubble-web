@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { BTN, FIELD_H, FIELD_W, Sim, TEST_LEVEL, TILE, TUNING } from "../src";
 import type { BubbleState, LevelData, SimEvent } from "../src";
 
-const newSim = (level: LevelData = TEST_LEVEL) => new Sim([level], 1, 1);
+const newSim = (level: LevelData = TEST_LEVEL) => {
+  const sim = new Sim([level], 1, 1);
+  sim.state.enemies = []; // these tests are about bubbles, not enemies
+  return sim;
+};
 const run = (sim: Sim, ticks: number, b0 = 0): SimEvent[] => {
   const ev: SimEvent[] = [];
   for (let i = 0; i < ticks; i++) ev.push(...sim.step([b0, 0]));

@@ -47,4 +47,26 @@ export const TUNING = {
   respawnTicks: 90,
   hurryUpTicks: 3600,
   roundAngerTicks: 1800,
+  /** Enemy body is a square of this many pixels, centered on (x, y). */
+  enemySize: 14,
+  enemyWalkSpeed: 0.5,
+  /** Chance a walker drops off a ledge it reaches (otherwise it turns around). */
+  enemyLedgeDropChance: 0.3,
+  /** Per-tick chance to hop when a player stands on a reachable platform above. */
+  enemyHopChance: 0.02,
+  /** Vertical band (px, enemy center to player center) in which a hop is attempted. */
+  enemyHopMinRise: 16,
+  enemyHopMaxRise: 48,
+  /** Horizontal reach (px) within which a player above triggers a hop. */
+  enemyHopReach: 48,
+  /** Score awarded to the popping player for a trapped enemy (reworked by the scoring task). */
+  enemyPopScore: 100,
+  /** Initial vy of a dead enemy's arc. */
+  enemyDeathVel: -2.5,
+  /** Horizontal speed of a dead enemy's arc. */
+  enemyDeathSpeed: 1.0,
+  /** Hard cap on how long a dead enemy arcs before being removed. */
+  enemyDeathMaxTicks: 120,
+  /** Ticks a player spends in the dying state before respawning (or being gone). */
+  playerDyingTicks: 60,
 } as const;

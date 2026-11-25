@@ -4,6 +4,7 @@ import type { LevelData } from "../level";
 import { Rng } from "../rng";
 import type { GameState, PlayerState, SimEvent } from "../types";
 import { stepBubbles } from "./bubbles";
+import { stepEnemies } from "./enemies";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 
 const P1_SPAWN_COL = 3;
@@ -22,6 +23,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     score: 0,
     fireCooldown: 0,
     invulnTicks: 0,
+    stateTicks: 0,
     onGround: true,
     powers: { speed: false, fastBubble: false, longBubble: false, rapidFire: false },
   };
@@ -42,6 +44,31 @@ function placeAtSpawn(lv: LevelData, p: PlayerState): void {
   p.vx = 0;
   p.vy = 0;
   p.onGround = true;
+}
+
+/**
+ * Invulnerability countdown and the dying -> respawning -> alive (or gone)
+ * progression. Kept out of stepPlayer, which only moves living players.
+ */
+function stepPlayerLife(lv: LevelData, p: PlayerState): void {
+  if (p.state === "alive") {
+    if (p.invulnTicks > 0) p.invulnTicks--;
+    return;
+  }
+  if (p.state !== "dying" && p.state !== "respawning") return;
+  if (--p.stateTicks > 0) return;
+  if (p.state === "dying") {
+    if (p.lives > 0) {
+      p.state = "respawning";
+      p.stateTicks = TUNING.respawnTicks;
+      placeAtSpawn(lv, p);
+    } else {
+      p.state = "gone";
+    }
+  } else {
+    p.state = "alive";
+    p.invulnTicks = TUNING.invulnTicks;
+  }
 }
 
 export class Sim {
@@ -97,7 +124,19 @@ export class Sim {
     this.state.phase = "round";
     this.state.roundTicks = 0;
     this.state.hurryActive = false;
-    this.state.enemies = [];
+    this.state.enemies = lv.enemies.map((s) => ({
+      id: this.state.nextId++,
+      type: s.type,
+      x: s.col * TILE + TILE / 2,
+      y: (s.row + 1) * TILE - TUNING.enemySize / 2,
+      vx: 0,
+      vy: 0,
+      dir: 1,
+      state: "spawning",
+      angry: false,
+      spawnDelay: s.delayTicks,
+      onGround: false,
+    }));
     this.state.bubbles = [];
     this.state.items = [];
     for (const p of this.state.players) placeAtSpawn(lv, p);
@@ -116,10 +155,13 @@ export class Sim {
   step(buttons: [number, number]): SimEvent[] {
     const events: SimEvent[] = [];
     this.state.tick++;
+    if (this.state.phase === "round") this.state.roundTicks++;
     for (const p of this.state.players) {
+      stepPlayerLife(this.currentLevel, p);
       events.push(...stepPlayer(this, p, buttons[p.id]));
     }
     events.push(...stepBubbles(this, buttons));
+    events.push(...stepEnemies(this));
     return events;
   }
 }
