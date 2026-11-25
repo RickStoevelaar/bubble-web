@@ -3,6 +3,8 @@ import { BTN, FIELD_H, FIELD_W, GAME_LEVELS, Sim, TILE, TUNING, isSolid } from "
 import type { GameState } from "../../src";
 
 const TICKS = 900;
+/** Each smoke test takes ~0.3 s; the explicit budget keeps a loaded CI box from tripping the 5 s default. */
+const SMOKE_TIMEOUT = 30_000;
 const FLIERS = new Set(["flyer", "bouncer"]);
 
 function finite(v: unknown, path: string): void {
@@ -39,42 +41,41 @@ function runLevel(round: number, input: (t: number) => [number, number]): { sim:
 export function describeSmoke(from: number, to: number): void {
   describe(`rounds ${from}-${to} run in the sim`, () => {
     it("exist in GAME_LEVELS", () => expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(to));
-  for (let round = from; round <= to; round++) {
-    it(`round ${round}: idle players`, () => {
-      const lv = GAME_LEVELS[round - 1]!;
-      const { sim, maxDelay, leftSpawnAt } = runLevel(round, () => [0, 0]);
-      expect(sim.state.round).toBe(round);
-      expect(sim.state.enemies.length).toBeGreaterThan(0);
-      expect(leftSpawnAt, "enemies leave the spawning state").toBeGreaterThanOrEqual(0);
-      expect(leftSpawnAt).toBeLessThanOrEqual(maxDelay + 120);
-      finite(sim.state, "state");
-      for (const e of sim.state.enemies) {
-        if (e.state === "dead" || FLIERS.has(e.type)) continue;
-        expect(isSolid(lv, Math.floor(e.x / TILE), Math.floor(e.y / TILE)), `${e.type} inside a solid tile at (${e.x}, ${e.y})`).toBe(false);
-      }
-    });
-
-    it(`round ${round}: players walking right and firing`, () => {
-      const { sim } = runLevel(round, (t) => {
-        const b = BTN.R | (t % 20 === 0 ? BTN.F : 0) | (t % 90 === 0 ? BTN.J : 0);
-        return [b, b];
+    for (let round = from; round <= to; round++) {
+      it(`round ${round}: idle players`, { timeout: SMOKE_TIMEOUT }, () => {
+        const lv = GAME_LEVELS[round - 1]!;
+        const { sim, maxDelay, leftSpawnAt } = runLevel(round, () => [0, 0]);
+        expect(sim.state.round).toBe(round);
+        expect(sim.state.enemies.length).toBeGreaterThan(0);
+        expect(leftSpawnAt, "enemies leave the spawning state").toBeGreaterThanOrEqual(0);
+        expect(leftSpawnAt).toBeLessThanOrEqual(maxDelay + 120);
+        finite(sim.state, "state");
+        for (const e of sim.state.enemies) {
+          if (e.state === "dead" || FLIERS.has(e.type)) continue;
+          expect(isSolid(lv, Math.floor(e.x / TILE), Math.floor(e.y / TILE)), `${e.type} inside a solid tile at (${e.x}, ${e.y})`).toBe(false);
+        }
       });
-      finite(sim.state, "state");
-    });
-  }
 
+      it(`round ${round}: players walking right and firing`, { timeout: SMOKE_TIMEOUT }, () => {
+        const { sim } = runLevel(round, (t) => {
+          const b = BTN.R | (t % 20 === 0 ? BTN.F : 0) | (t % 90 === 0 ? BTN.J : 0);
+          return [b, b];
+        });
+        finite(sim.state, "state");
+      });
+    }
   });
 }
 
 export function describeHurry(): void {
   describe("hurry-up", () => {
-  it("the hurry-up fires only once hurryUpTicks have passed", () => {
-    const sim = new Sim(GAME_LEVELS, 12345, { playerCount: 2, startRound: 1 });
-    sim.state.roundTicks = TUNING.hurryUpTicks - 3;
-    for (let i = 0; i < 2; i++) sim.step([0, 0]);
-    expect(sim.state.hurryActive).toBe(false);
-    for (let i = 0; i < 4; i++) sim.step([0, 0]);
-    expect(sim.state.hurryActive).toBe(true);
-  });
+    it("the hurry-up fires only once hurryUpTicks have passed", { timeout: SMOKE_TIMEOUT }, () => {
+      const sim = new Sim(GAME_LEVELS, 12345, { playerCount: 2, startRound: 1 });
+      sim.state.roundTicks = TUNING.hurryUpTicks - 3;
+      for (let i = 0; i < 2; i++) sim.step([0, 0]);
+      expect(sim.state.hurryActive).toBe(false);
+      for (let i = 0; i < 4; i++) sim.step([0, 0]);
+      expect(sim.state.hurryActive).toBe(true);
+    });
   });
 }

@@ -20,9 +20,16 @@ import { stairs } from "./stairs";
 import { tiers } from "./tiers";
 import { tunnel } from "./tunnel";
 import { waves } from "./waves";
+import { hooks } from "./hooks";
+import { courtyard } from "./courtyard";
+import { spiral } from "./spiral";
+import { lanterns } from "./lanterns";
+import { bridges } from "./bridges";
+import { canyon } from "./canyon";
+import { chambers } from "./chambers";
 import { zigzag } from "./zigzag";
 
 /** Every template by name. Add new families here. */
 export const TEMPLATES: Record<string, Template> = Object.fromEntries(
-  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring, shafts, moat, diamond, nests, rails, slashes].map((t) => [t.name, t]),
+  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring, shafts, moat, diamond, nests, rails, slashes, hooks, courtyard, spiral, lanterns, bridges, canyon, chambers].map((t) => [t.name, t]),
 );

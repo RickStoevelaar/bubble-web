@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { LevelData } from "@bubble/shared";
 import type { Batch } from "../../../shared/test/support/batches";
+import { Rng } from "@bubble/shared";
 import { generateJson, generateLevels } from "../../gen-levels/generate";
+import { assertGrid } from "../../gen-levels/invariants";
 import { ROUNDS } from "../../gen-levels/rounds/index";
 import { TEMPLATES } from "../../gen-levels/templates/index";
 import type { RoundDef } from "../../gen-levels/types";
@@ -98,11 +100,11 @@ export function describeBatchData(batch: Batch, src: BatchSource = {}): void {
     }
 
     if (batch.waves !== undefined) {
-      it("enough rounds spawn in two or three waves (2-3 distinct delays, each wave with several enemies)", () => {
+      it("enough rounds spawn in two or three waves (2-3, for some batches up to 4, distinct delays, each wave with several enemies)", () => {
         const waves = levels.filter((l) => {
           const by = new Map<number, number>();
           for (const e of l.enemies) by.set(e.delayTicks, (by.get(e.delayTicks) ?? 0) + 1);
-          return by.size >= 2 && by.size <= 3 && [...by.values()].every((k) => k >= 2);
+          return by.size >= 2 && by.size <= (batch.maxWaveCount ?? 3) && [...by.values()].every((k) => k >= 2);
         });
         expect(waves.length).toBeGreaterThanOrEqual(batch.waves!);
       });
@@ -134,6 +136,18 @@ export function describeBatchData(batch: Batch, src: BatchSource = {}): void {
       expect(new Set(defs.map((r) => r.template)).size).toBeGreaterThanOrEqual(batch.distinctTemplates);
       expect(defs.filter((r) => r.template === "hand").length).toBeGreaterThanOrEqual(batch.handMin);
       for (const r of batch.handRounds) expect(all[r - 1]!.template).toBe("hand");
+    });
+
+    it("the batch's own templates satisfy the grid invariants with default parameters (several seeds) and with every parameter set and seed the batch's rounds use", () => {
+      for (const t of batch.freshTemplates) {
+        const tpl = TEMPLATES[t]!;
+        for (const seed of [1, 2, 3, 4]) expect(() => assertGrid(tpl.build({}, new Rng(seed)), `${t} defaults seed ${seed}`)).not.toThrow();
+      }
+      for (const r of defs) {
+        if (r.tiles || !batch.freshTemplates.includes(r.template)) continue;
+        const seed = r.seed ?? r.round * 1009 + 17;
+        expect(() => assertGrid(TEMPLATES[r.template]!.build(r.params, new Rng(seed)), `round ${r.round} ${r.template}`), `round ${r.round}`).not.toThrow();
+      }
     });
 
     it("uses enough of the batch's own template families (explicit names)", () => {

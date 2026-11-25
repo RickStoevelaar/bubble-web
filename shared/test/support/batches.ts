@@ -29,6 +29,8 @@ export interface Batch {
   toughShift?: { early: number; late: number; lateMin: number };
   /** Rounds with 2-3 distinct spawn delays, each wave holding at least 2 enemies. */
   waves?: number;
+  /** Most distinct spawn delays a wave round may use (default 3; rounds 51-75 allow 4). */
+  maxWaveCount?: number;
   flags?: { noFlag: number; perFlag: [number, number]; singleBefore: number; twoFlagFrom: number; twoFlagMin: number };
   /** Rounds with drift of at least `cells` cells. */
   drift: { rounds: number; cells: number };
@@ -69,6 +71,27 @@ export const BATCHES: Batch[] = [
     waves: 8,
     flags: { noFlag: 8, perFlag: [3, 7], singleBefore: 31, twoFlagFrom: 31, twoFlagMin: 6 },
     drift: { rounds: 4, cells: 8 },
+    fairness: true,
+  },
+  {
+    name: "rounds 51-75",
+    from: 51,
+    to: 75,
+    sha256: "faf8d77842a83f62f83c4fedf91dea5b2a7ed2d966c7822c8f7a849b06563c2d",
+    freshTemplates: ["hooks", "courtyard", "spiral", "lanterns", "bridges", "canyon", "chambers"],
+    distinctTemplates: 14,
+    freshUsed: 6,
+    handRounds: [60, 70, 75],
+    handMin: 4,
+    enemyCount: { min: 9, max: 12, startAvg: [9, 10.2], endAvg: [11, 12] },
+    milestones: { rounds: [60, 70, 75], count: [11, 12] },
+    typesPerRound: 4,
+    typeRounds: 15,
+    toughShift: { early: 8, late: 8, lateMin: 0.6 },
+    waves: 12,
+    maxWaveCount: 4,
+    flags: { noFlag: 6, perFlag: [4, 8], singleBefore: 56, twoFlagFrom: 56, twoFlagMin: 8 },
+    drift: { rounds: 5, cells: 8 },
     fairness: true,
   },
 ];
