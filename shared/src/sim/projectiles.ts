@@ -33,7 +33,7 @@ function stepOne(sim: EnemySim, pr: ProjectileState, events: SimEvent[]): boolea
   for (const p of sim.state.players) {
     if (p.state !== "alive" || p.invulnTicks > 0) continue;
     if (hits(p, pr)) {
-      killPlayer(p, events);
+      killPlayer(p, events, sim.state.round);
       return true;
     }
   }

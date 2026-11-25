@@ -1,5 +1,6 @@
 import { GRID_H, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
+import { levelForState } from "../levels/secret-rooms";
 import type { LevelData } from "../level";
 import { Rng } from "../rng";
 import type { GameState, PlayerState, SimEvent } from "../types";
@@ -10,6 +11,7 @@ import { maybeSpawnItem, resolvePendingRound } from "./powers";
 import { addScore, nextLifeThreshold } from "./scoring";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
+import { placeAtSecretSpawn, repairSecret } from "./secret";
 import { clearSpecials, newLetters, repairEffects, repairLetters, stepEffects, stepSpecialSpawns } from "./specials";
 
 const P1_SPAWN_COL = 3;
@@ -36,6 +38,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     powerStep: 0,
     ringTicks: 0,
     letters: newLetters(),
+    deathlessSince: 1,
   };
 }
 
@@ -48,6 +51,7 @@ function repairPlayer(p: Partial<PlayerState>): void {
   p.powerStep = count(p.powerStep);
   p.ringTicks = count(p.ringTicks);
   p.letters = repairLetters(p.letters);
+  p.deathlessSince = Number.isFinite(p.deathlessSince) ? Math.max(1, Math.floor(p.deathlessSince!)) : 1;
   const w: Partial<PlayerState["powers"]> = p.powers ?? {};
   p.powers = { speed: w.speed === true, fastBubble: w.fastBubble === true, longBubble: w.longBubble === true, rapidFire: w.rapidFire === true };
 }
@@ -123,6 +127,7 @@ export class Sim {
       phaseTicks: 0,
       runOver: false,
       pendingRound: 0,
+      secret: null,
       nextId: 1,
       rngState: this.rng.getState(),
     };
@@ -136,7 +141,6 @@ export class Sim {
   static restore(levels: LevelData[], state: GameState): Sim {
     const sim = new Sim(levels, state.tick, state.players.length === 2 ? 2 : 1);
     sim.state = structuredClone(state);
-    sim.currentLevel = levels[state.round - 1]!;
     // Defaults for fields that older saves may lack.
     const s = sim.state as Partial<GameState>;
     if (typeof s.enemiesSeen !== "boolean") sim.state.enemiesSeen = false;
@@ -147,6 +151,8 @@ export class Sim {
     sim.state.effects = repairEffects(s.effects);
     sim.state.specialTimer = Number.isFinite(s.specialTimer) ? Math.floor(s.specialTimer!) : TUNING.specialFirstDelayTicks;
     sim.state.pendingRound = count(s.pendingRound);
+    sim.state.secret = repairSecret(s.secret);
+    sim.currentLevel = levelForState(levels, sim.state);
     for (const p of sim.state.players as Partial<PlayerState>[]) {
       if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
       repairPlayer(p);
@@ -170,6 +176,7 @@ export class Sim {
     if (!lv) throw new Error(`no level for round ${n}`);
     this.currentLevel = lv;
     this.state.round = n;
+    this.state.secret = null;
     this.state.phase = "round";
     this.state.roundTicks = 0;
     this.state.hurryActive = false;
@@ -200,7 +207,8 @@ export class Sim {
   addPlayer(): 0 | 1 {
     if (this.state.players.length >= 2) throw new Error("already two players");
     const p = newPlayer(1);
-    placeAtSpawn(this.currentLevel, p);
+    if (this.state.secret) placeAtSecretSpawn(this.state.secret, p);
+    else placeAtSpawn(this.currentLevel, p);
     this.state.players.push(p);
     return 1;
   }
@@ -221,6 +229,7 @@ export class Sim {
       p.powerStep = 0;
       p.ringTicks = 0;
       p.letters = newLetters();
+      p.deathlessSince = this.state.round;
     }
     this.state.pendingRound = 0;
     return [{ kind: "continue" }];
@@ -237,7 +246,7 @@ export class Sim {
     const events: SimEvent[] = [];
     this.state.tick++;
     if (this.state.runOver || this.state.phase === "gameover" || this.state.phase === "ending") return events;
-    if (this.state.phase === "round") this.state.roundTicks++;
+    if (this.state.phase === "round" && !this.state.secret) this.state.roundTicks++;
     for (const p of this.state.players) {
       stepPlayerLife(this.currentLevel, p);
       const own = stepPlayer(this, p, buttons[p.id]);

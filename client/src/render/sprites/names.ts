@@ -53,13 +53,15 @@ export type HeroName = "hero_pip" | "hero_pop";
 export type EnemyName = `enemy_${EnemyType}` | `enemy_${EnemyType}_angry`;
 export type BubbleName = "bubble_normal" | "bubble_water" | "bubble_fire" | "bubble_lightning" | "bubble_letter";
 export type ItemName = (typeof ITEM_NAMES)[number];
+/** The secret-room door item (kept out of ITEM_NAMES, which food and treasure index by sprite number). */
+export type DoorName = "item_door";
 export type TileName = `tile_${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
 export type IconName = "icon_pip" | "icon_pop" | "icon_arrow";
 export type ProjectileName = "icon_rock" | "icon_flame";
 export type EffectName = "icon_water" | "icon_bolt";
 export type FontName = `font_${FontChar}`;
 
-export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | PowerName | TileName | IconName | ProjectileName | EffectName | FontName;
+export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | DoorName | PowerName | TileName | IconName | ProjectileName | EffectName | FontName;
 
 /** Hero frame indices. */
 export const HERO_FRAME = { walk0: 0, walk1: 1, jump: 2, fall: 3, blow: 4, death0: 5 } as const;

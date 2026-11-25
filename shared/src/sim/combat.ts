@@ -2,7 +2,8 @@ import { TUNING } from "../constants";
 import type { PlayerState, SimEvent } from "../types";
 
 /** The one player death path: enemy contact and projectile hits both end up here. */
-export function killPlayer(p: PlayerState, events: SimEvent[]): void {
+export function killPlayer(p: PlayerState, events: SimEvent[], round?: number): void {
+  if (round !== undefined) p.deathlessSince = round;
   p.state = "dying";
   p.stateTicks = TUNING.playerDyingTicks;
   p.lives--;

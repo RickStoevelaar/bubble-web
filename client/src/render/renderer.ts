@@ -4,8 +4,11 @@ import {
   GRID_H,
   GRID_W,
   TILE,
+  SECRET_ROOMS,
+  TICK_RATE,
   TUNING,
   effectHalfHeight,
+  levelForState,
   type BubbleState,
   type EffectState,
   type EnemyState,
@@ -26,6 +29,7 @@ import {
   hasSprite,
   type DrawOptions,
   type Layer,
+  type DoorName,
   type FontName,
   type ItemName,
   type PowerName,
@@ -65,8 +69,10 @@ export function drawText(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, s: s
  * Food and treasure pick their sprite by index; an index outside 0..7 (older server) falls back to the id.
  * Power items are drawn by their power id; a missing or unknown one (version skew) is skipped.
  */
-function itemSprite(it: ItemState): ItemName | PowerName | null {
+function itemSprite(it: ItemState): ItemName | PowerName | DoorName | null {
   switch (it.kind) {
+    case "door":
+      return "item_door";
     case "power":
       return it.power !== undefined && Object.prototype.hasOwnProperty.call(POWER_SPRITES, it.power) ? POWER_SPRITES[it.power] : null;
     case "treasure":
@@ -260,6 +266,8 @@ function drawHud(
   const round = `ROUND ${state.round}`;
   drawText(ctx, sheet, round, Math.round((FIELD_W - textWidth(round)) / 2), 0);
 
+  if (state.secret) drawSecretHud(ctx, sheet, state.secret);
+
   const me = playerById(state.players, localPlayer);
   if (me && me.state !== "gone" && state.roundTicks < MARKER_TICKS) {
     const bob = (state.roundTicks >> 3) & 1 ? 2 : 0;
@@ -269,6 +277,20 @@ function drawHud(
   if (state.hurryActive && ((state.roundTicks >> 4) & 1) === 0) {
     const t = "HURRY!";
     drawText(ctx, sheet, t, Math.round((FIELD_W - textWidth(t)) / 2), FIELD_H / 2 - TILE / 2);
+  }
+}
+
+/** Secret-room overlay: "SECRET" with the whole seconds left under the round line, and the room's code fragment in 3x glyphs. */
+const FRAGMENT_SIZE = 24;
+const FRAGMENT_ADVANCE = 20;
+function drawSecretHud(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, secret: NonNullable<GameState["secret"]>): void {
+  const line = `SECRET ${Math.ceil(Math.max(0, secret.ticksLeft) / TICK_RATE)}`;
+  drawText(ctx, sheet, line, Math.round((FIELD_W - textWidth(line)) / 2), TILE + 2);
+  const fragment = SECRET_ROOMS[secret.index]?.fragment ?? "";
+  const x0 = (FIELD_W - fragment.length * FRAGMENT_ADVANCE) / 2 + FRAGMENT_ADVANCE / 2;
+  for (let i = 0; i < fragment.length; i++) {
+    const name = GLYPH_NAME.get(fragment[i]!);
+    if (name !== undefined) drawEx(ctx, sheet, name, 0, x0 + i * FRAGMENT_ADVANCE, 64, { size: FRAGMENT_SIZE });
   }
 }
 
@@ -314,7 +336,7 @@ export function render(
   t: number = 0,
 ): void {
   void t;
-  const level = levels[state.round - 1] ?? levels[0];
+  const level = levelForState(levels, state);
   const theme = (((level?.theme ?? 0) % 10) + 10) % 10;
   const walkFrame = (state.roundTicks >> 3) & 1;
 

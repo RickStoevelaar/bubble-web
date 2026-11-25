@@ -49,7 +49,7 @@ export interface ProjectileState {
   kind: "rock" | "flame";
   ageTicks: number;
 }
-export type ItemKind = "food" | "power" | "treasure";
+export type ItemKind = "food" | "power" | "treasure" | "door";
 /** The ten power-up items; see POWER_TABLE for what each one does and what earns it. */
 export type PowerId = "boots" | "tonicA" | "tonicB" | "tonicC" | "parasolS" | "parasolM" | "parasolL" | "ring" | "spark" | "flask";
 /** The per-player action tallies that earn power items. */
@@ -103,6 +103,8 @@ export interface PlayerState {
   ringTicks: number;
   /** EXTEND progress: which of the six letters (E X T E N D) this player holds; persists across rounds. */
   letters: boolean[];
+  /** Round at which this player last died (1 = never); the secret door needs a long stretch since then. Not reset by loadRound. */
+  deathlessSince: number;
 }
 
 /**
@@ -127,6 +129,15 @@ export interface EffectState {
   kills: number;
   reachL: number;
   reachR: number;
+}
+
+/** Being inside a treasure room: which one (index into SECRET_ROOMS), the round to resume after, and its two countdowns. */
+export interface SecretState {
+  index: 0 | 1 | 2;
+  returnRound: number;
+  ticksLeft: number;
+  /** Ticks since the last treasure was taken (the room closes after TUNING.secretLeaveDelayTicks). */
+  leaveTicks: number;
 }
 
 export interface GameState {
@@ -154,6 +165,8 @@ export interface GameState {
   nextId: number;
   /** Round a parasol asked to jump to (0 = none); resolved at the end of the tick. */
   pendingRound: number;
+  /** Non-null while the players are inside a secret treasure room. */
+  secret: SecretState | null;
   /** mulberry32 state of Sim.rng, synced at the end of every step so restore resumes the stream. */
   rngState: number;
 }

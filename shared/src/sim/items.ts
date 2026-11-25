@@ -4,6 +4,7 @@ import { moveBody } from "./physics";
 import { PLAYER_SIZE } from "./player";
 import { applyPower, isPowerId, type PowerSim } from "./powers";
 import { FOOD_BY_ENEMY, addScore } from "./scoring";
+import { enterSecret } from "./secret";
 
 /** Drops the food of a popped enemy where its death arc ended (bottoms aligned, since items are smaller). */
 export function spawnFood(state: GameState, e: EnemyState): void {
@@ -43,6 +44,10 @@ export function stepItems(sim: PowerSim): SimEvent[] {
       kept.push(it);
       continue;
     }
+    if (it.kind === "door") {
+      enterSecret(sim);
+      return events;
+    }
     events.push({ kind: "collect", player: p.id, x: it.x, y: it.y }, ...addScore(sim, p.id, it.value));
     if (it.kind === "power" && it.power) applyPower(sim, p, it.power, events);
   }
@@ -50,7 +55,7 @@ export function stepItems(sim: PowerSim): SimEvent[] {
   return events;
 }
 
-const KINDS: readonly string[] = ["food", "power", "treasure"];
+const KINDS: readonly string[] = ["food", "power", "treasure", "door"];
 const num = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
 /**

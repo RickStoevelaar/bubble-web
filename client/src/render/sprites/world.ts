@@ -1,6 +1,6 @@
 import { GLYPHS_5X7 } from "./font";
 import { sym } from "./grid";
-import type { BubbleName, ItemName, SpriteDef, TileName } from "./names";
+import type { BubbleName, DoorName, ItemName, SpriteDef, TileName } from "./names";
 
 /* ------------------------------------------------------------------ bubbles */
 
@@ -214,6 +214,32 @@ export function itemDefs(): Record<ItemName, SpriteDef> {
     item_pear: { cls: c, palette: { K: "#3a4a10", P: "#c8e05a", p: "#97b83a", h: "#f2ffb0", s: "#6b4a20" }, frames: [pear] },
     item_potion: { cls: c, palette: { K: "#2a2a44", G: "#dbe9ff", L: "#ff4f8a", l: "#c02a64", h: "#ffc2da", C: "#b9824a" }, frames: [potion] },
     item_star: { cls: c, palette: { K: "#7a5a10", Y: "#ffe45c", h: "#fff8c0" }, frames: [star] },
+  };
+}
+
+/** The secret-room door: a stone arch around a glowing violet doorway with a star above a keyhole. */
+const DOOR = [
+  "................",
+  ".....KKKKKK.....",
+  "...KKSSSSSSKK...",
+  "..KSSSSSSSSSSK..",
+  ".KSSKKKKKKKKSSK.",
+  ".KSKGGGGGGGGKSK.",
+  ".KSKGGGYYGGGKSK.",
+  ".KSKGGYYYYGGKSK.",
+  ".KSKGGGYYGGGKSK.",
+  ".KSKGGGGGGGGKSK.",
+  ".KSKGGGKKGGGKSK.",
+  ".KSKGGGKKGGGKSK.",
+  ".KSKGGGGGGGGKSK.",
+  ".KSKGGGGGGGGKSK.",
+  ".KKKKKKKKKKKKKK.",
+  ".ssssssssssssss.",
+];
+
+export function doorDefs(): Record<DoorName, SpriteDef> {
+  return {
+    item_door: { cls: "char", palette: { K: "#2a1840", S: "#b8b0c8", s: "#7c7490", G: "#7b4ae0", Y: "#fff27a" }, frames: [DOOR] },
   };
 }
 

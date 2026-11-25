@@ -117,7 +117,7 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
     for (const e of state.enemies) {
       if (e.state !== "active") continue;
       if (Math.abs(e.x - p.x) < reach && Math.abs(e.y - p.y) < reach) {
-        killPlayer(p, events);
+        killPlayer(p, events, state.round);
         break;
       }
     }

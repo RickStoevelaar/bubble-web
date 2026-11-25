@@ -175,4 +175,13 @@ export const TUNING = {
   /** Lightning bolt: half the band height (px) and how long its visual stays. */
   boltHalfHeight: 6,
   boltVisualTicks: 20,
+
+  /** Secret rooms: the rounds whose clear may open a door (the index picks the room), the deathless stretch (rounds) every present player needs, and the clearing window while a door waits. */
+  secretDoorRounds: [20, 30, 40] as readonly number[],
+  secretDoorDeathlessRounds: 10,
+  secretDoorClearTicks: 600,
+  /** Treasure room: how long it lasts, how many treasure items rain in, and the pause after the last one is taken. */
+  secretRoomTicks: 900,
+  secretTreasureCount: 40,
+  secretLeaveDelayTicks: 60,
 } as const;

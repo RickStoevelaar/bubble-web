@@ -138,7 +138,7 @@ function pickWeighted(rng: Rng, weights: readonly number[]): number {
 /** Once per tick in phase "round": counts the timer down and, when it hits 0, may float in a special bubble. */
 export function stepSpecialSpawns(sim: SpecialSim): void {
   const state = sim.state;
-  if (state.phase !== "round") return;
+  if (state.phase !== "round" || state.secret) return;
   if (--state.specialTimer > 0) return;
   const rng = sim.rng;
   state.specialTimer = TUNING.specialIntervalMin + rng.int(TUNING.specialIntervalMax - TUNING.specialIntervalMin);

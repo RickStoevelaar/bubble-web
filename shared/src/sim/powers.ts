@@ -48,7 +48,7 @@ export interface PowerSim {
 }
 
 /** Platform tiles: solid, two empty tiles above, outside the two border wall columns on each side. */
-function platformSpots(lv: LevelData): { tx: number; ty: number }[] {
+export function platformSpots(lv: LevelData): { tx: number; ty: number }[] {
   const spots: { tx: number; ty: number }[] = [];
   for (let ty = 2; ty < GRID_H; ty++) {
     for (let tx = 2; tx < GRID_W - 2; tx++) {
@@ -64,7 +64,7 @@ function platformSpots(lv: LevelData): { tx: number; ty: number }[] {
  */
 export function maybeSpawnItem(sim: PowerSim): void {
   const state = sim.state;
-  if (state.phase !== "round") return;
+  if (state.phase !== "round" || state.secret) return;
   if (state.items.some((i) => i.kind === "power")) return;
   for (const p of state.players) {
     if (p.state !== "alive") continue;
@@ -163,6 +163,7 @@ export function resolvePendingRound(sim: PowerSim & { loadRound(n: number): void
   const target = state.pendingRound;
   if (target === 0) return;
   state.pendingRound = 0;
+  if (state.secret) return; // a parasol skip does not carry out of a treasure room
   if (state.runOver || (state.phase !== "round" && state.phase !== "clearing") || target <= state.round) return;
   sim.loadRound(target);
   events.push({ kind: "clear" });

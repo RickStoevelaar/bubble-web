@@ -1,10 +1,13 @@
 import { FIELD_W, TUNING } from "../constants";
 import type { GameState, SimEvent } from "../types";
+import type { LevelData } from "../level";
+import { maybeSpawnDoor, stepSecret } from "./secret";
 import { clearSpecials } from "./specials";
 
 export interface RoundSim {
   state: GameState;
-  levels: unknown[];
+  currentLevel: LevelData;
+  levels: LevelData[];
   loadRound(n: number): void;
 }
 
@@ -39,6 +42,11 @@ export function stepRound(sim: RoundSim): SimEvent[] {
     return events;
   }
 
+  if (state.secret) {
+    stepSecret(sim, events);
+    return events;
+  }
+
   if (state.phase === "round") {
     if (!state.hurryActive && state.roundTicks >= TUNING.hurryUpTicks) {
       state.hurryActive = true;
@@ -54,9 +62,11 @@ export function stepRound(sim: RoundSim): SimEvent[] {
       state.projectiles = [];
       clearSpecials(state);
       events.push({ kind: "clear" });
+      maybeSpawnDoor(sim);
     }
   } else if (state.phase === "clearing") {
-    if (++state.phaseTicks >= TUNING.clearTicks) {
+    const clearTicks = state.items.some((i) => i.kind === "door") ? TUNING.secretDoorClearTicks : TUNING.clearTicks;
+    if (++state.phaseTicks >= clearTicks) {
       if (state.round >= sim.levels.length) {
         state.phase = "ending";
         state.runOver = true;

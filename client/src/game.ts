@@ -1,4 +1,5 @@
 import {
+  levelForState,
   stepPlayer,
   type BubbleState,
   type GameState,
@@ -191,7 +192,7 @@ export class ClientGame {
   // --- prediction --------------------------------------------------------
 
   private levelFor(state: GameState): LevelData {
-    return this.levels[state.round - 1] ?? this.levels[0]!;
+    return levelForState(this.levels, state);
   }
 
   private stepPredicted(p: PlayerState, buttons: number): void {
