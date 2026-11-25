@@ -372,6 +372,7 @@ describe("entering and the room", () => {
   it("players can still move and blow harmless bubbles in the room", () => {
     const sim = enterRoom(mkLevels(45));
     const x = sim.state.players[1]!.x;
+    sim.state.players[1]!.y = 60; // open air: a bubble blown on the floor would hit a letter
     run(sim, 10, [0, BTN.F | BTN.L]);
     expect(sim.state.bubbles.length).toBeGreaterThan(0);
     expect(sim.state.players[1]!.x).toBeLessThan(x);
@@ -549,28 +550,46 @@ describe("restore", () => {
 });
 
 /**
- * Reachability by real physics: starting from the spawn points, try short input policies (jump or not,
- * a direction for t1 ticks then another) through `moveBody` exactly as `stepPlayer` drives it, and record every
- * standing position (x in whole px, y exactly on a tile top). Positions closer than 2 px share one expansion.
+ * Standing-position graph by real physics. Nodes are positions where a body rests (integer x, y on a tile top);
+ * edges are what one input policy (walk, or jump then a direction for t1 ticks and another after) reaches
+ * through the sim's own `moveBody`, so walking, jumping, dropping and falling are all covered. `jumpVel` lets
+ * the caller use a weaker jump to demand a safety margin.
  */
-function reachableStands(lv: LevelData, starts: { x: number; y: number }[]): Map<string, { x: number; y: number }> {
-  const seen = new Map<string, { x: number; y: number }>();
-  const expanded = new Set<string>();
-  const queue: { x: number; y: number }[] = [];
-  const add = (x: number, y: number): void => {
-    const k = `${x},${y}`;
-    if (seen.has(k)) return;
-    seen.set(k, { x, y });
-    const bucket = `${Math.floor(x / 2)},${y}`;
-    if (expanded.has(bucket)) return;
-    expanded.add(bucket);
-    queue.push({ x, y });
+interface StandGraph {
+  nodes: Map<string, { x: number; y: number }>;
+  /** Reachable from a spawn. */
+  forward: Set<string>;
+  /** Of those, the ones that can get back to a spawn: the spawn's strongly connected component. */
+  component: Set<string>;
+  /** Reachable but unable to return (one-way traps). */
+  trapped: string[];
+  maxRise: number;
+}
+
+function analyseStands(lv: LevelData, starts: { x: number; y: number }[], jumpVel: number = TUNING.jumpVel): StandGraph {
+  const nodes = new Map<string, { x: number; y: number }>();
+  const out = new Map<string, Set<string>>();
+  const queue: string[] = [];
+  const key = (x: number, y: number): string => `${x},${y}`;
+  const add = (x: number, y: number, from?: string): void => {
+    const k = key(x, y);
+    if (!nodes.has(k)) {
+      nodes.set(k, { x, y });
+      queue.push(k);
+    }
+    if (from !== undefined && from !== k) {
+      let set = out.get(from);
+      if (!set) out.set(from, (set = new Set()));
+      set.add(k);
+    }
   };
+  const startKeys = starts.map((s) => key(s.x, s.y));
   for (const s of starts) add(s.x, s.y);
   const dirs = [-1, 0, 1];
-  const t1s = [0, 10, 20, 30, 40, 50];
+  const t1s = [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 30, 40, 50];
   const body = { x: 0, y: 0, vx: 0, vy: 0, onGround: true };
-  const simulate = (x: number, y: number, jump: boolean, d1: number, t1: number, d2: number, total: number): void => {
+  let maxRise = 0;
+  const simulate = (from: string, x: number, y: number, jump: boolean, d1: number, t1: number, d2: number, total: number): void => {
     body.x = x;
     body.y = y;
     body.vx = 0;
@@ -579,50 +598,97 @@ function reachableStands(lv: LevelData, starts: { x: number; y: number }[]): Map
     for (let t = 0; t < total; t++) {
       body.vx = (t < t1 ? d1 : d2) * TUNING.walkSpeed;
       if (jump && t === 0) {
-        body.vy = TUNING.jumpVel;
+        body.vy = jumpVel;
         body.onGround = false;
       }
       moveBody(lv, body, PLAYER_SIZE);
       if (body.onGround) {
-        add(Math.round(body.x), body.y);
+        maxRise = Math.max(maxRise, y - body.y);
+        add(Math.round(body.x), body.y, from);
         if (jump) return;
       }
     }
   };
-  while (queue.length > 0) {
-    const s = queue.pop()!;
-    for (const d of dirs) simulate(s.x, s.y, false, d, 200, d, 200);
-    for (const d1 of dirs) for (const d2 of dirs) for (const t1 of t1s) simulate(s.x, s.y, true, d1, t1, d2, 160);
+  for (let i = 0; i < queue.length; i++) {
+    const k = queue[i]!;
+    const s = nodes.get(k)!;
+    for (const d of dirs) simulate(k, s.x, s.y, false, d, 200, d, 200);
+    for (const d1 of dirs) for (const d2 of dirs) for (const t1 of t1s) simulate(k, s.x, s.y, true, d1, t1, d2, 160);
   }
-  return seen;
+  const forward = new Set(nodes.keys());
+  const back = new Map<string, string[]>();
+  for (const [from, tos] of out) {
+    for (const to of tos) {
+      const list = back.get(to);
+      if (list) list.push(from);
+      else back.set(to, [from]);
+    }
+  }
+  const component = new Set<string>(startKeys);
+  const stack = [...startKeys];
+  while (stack.length > 0) {
+    for (const prev of back.get(stack.pop()!) ?? []) {
+      if (!component.has(prev)) {
+        component.add(prev);
+        stack.push(prev);
+      }
+    }
+  }
+  const trapped = [...forward].filter((k) => !component.has(k));
+  return { nodes, forward, component, trapped, maxRise };
 }
 
+/** Height a free jump with `vel` gains, measured by simulating it. */
+function jumpApex(vel: number): number {
+  const floorY = 26 * TILE - PLAYER_SIZE / 2;
+  const body = { x: 60, y: floorY, vx: 0, vy: vel, onGround: false };
+  let top = body.y;
+  for (let t = 0; t < 120; t++) {
+    moveBody(TEST_LEVEL, body, PLAYER_SIZE);
+    top = Math.min(top, body.y);
+  }
+  return floorY - top;
+}
+/** The jump the layouts must be solvable with: at least 4 px weaker than the real one. */
+const MARGIN_JUMP = TUNING.jumpVel + 0.15;
+const startsOf = (room: (typeof SECRET_ROOMS)[number]) =>
+  room.spawn.map((sp) => ({ x: sp.col * TILE + TILE / 2, y: sp.row * TILE + 1 }));
+
 describe("reachability", () => {
+  it("the margin jump really is at least 4 px lower than the real jump", () => {
+    expect(jumpApex(TUNING.jumpVel) - jumpApex(MARGIN_JUMP)).toBeGreaterThanOrEqual(4);
+  });
+
   for (const [i, name] of names.entries()) {
-    it(`room ${name}: every treasure and every usable ledge is reachable by walking and jumping`, () => {
+    it(`room ${name}: the standing graph is strongly connected and every treasure is collectable`, () => {
       const room = SECRET_ROOMS[i]!;
       const lv = room.level;
-      const reach = reachableStands(
-        lv,
-        room.spawn.map((s) => ({ x: s.col * TILE + TILE / 2, y: s.row * TILE + 1 })),
-      );
-      const stands = [...reach.values()];
+      const g = analyseStands(lv, startsOf(room), MARGIN_JUMP);
+      expect(g.trapped.slice(0, 10)).toEqual([]);
+      expect(g.maxRise).toBeLessThanOrEqual(jumpApex(TUNING.jumpVel) - 4);
+      const stands = [...g.component].map((k) => g.nodes.get(k)!);
 
-      // Treasure that has come to rest.
+      // Treasure that has come to rest sits near a standing position of the component.
       const sim = enterRoom(mkLevels(45), [20, 30, 40][i]!);
       run(sim, 300);
-      const reachItem = (t: { x: number; y: number }): boolean =>
-        stands.some((s) => Math.abs(s.x - t.x) < (TUNING.itemSize + PLAYER_SIZE) / 2 && Math.abs(s.y - t.y) < (TUNING.itemSize + PLAYER_SIZE) / 2);
-      const unreachable = treasure(sim.state).filter((t) => !reachItem(t));
-      expect(unreachable.map((t) => `${t.x},${t.y}`)).toEqual([]);
+      const reach = (TUNING.itemSize + PLAYER_SIZE) / 2;
+      const stranded = treasure(sim.state).filter(
+        (t) => !stands.some((s) => Math.abs(s.x - t.x) < reach && Math.abs(s.y - t.y) < reach),
+      );
+      expect(stranded.map((t) => `${t.x},${t.y}`)).toEqual([]);
 
-      // Every standing run (2+ adjacent tile tops with 2 empty rows above) outside sealed pockets.
+      // Every standing run (2+ adjacent tile tops with 2 empty rows above) outside sealed pockets is in the component.
+      // "Open" = covered by a 2x2 empty block reachable from the top-left through 2x2 blocks (slits and sealed pockets are not).
+      const fat = (x: number, y: number): boolean =>
+        x >= 2 && x + 1 < GRID_W - 2 && y >= 0 && y + 1 < GRID_H && !isSolid(lv, x, y) && !isSolid(lv, x + 1, y) && !isSolid(lv, x, y + 1) && !isSolid(lv, x + 1, y + 1);
+      const seen = new Set<string>();
       const open = new Set<string>();
       const stack: [number, number][] = [[2, 1]];
       while (stack.length > 0) {
         const [x, y] = stack.pop()!;
-        if (x < 2 || x >= GRID_W - 2 || y < 0 || y >= GRID_H || isSolid(lv, x, y) || open.has(`${x},${y}`)) continue;
-        open.add(`${x},${y}`);
+        if (!fat(x, y) || seen.has(`${x},${y}`)) continue;
+        seen.add(`${x},${y}`);
+        for (const [cx, cy] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]] as const) open.add(`${cx},${cy}`);
         stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
       }
       const standable = (tx: number, ty: number): boolean =>
@@ -637,19 +703,57 @@ describe("reachability", () => {
         }
       }
       expect(missed).toEqual([]);
-    }, 60000);
+    }, 120000);
   }
 });
 
 describe("reachability checker sanity", () => {
-  it("reaches a letter top but not a platform floating far above everything (so the check can fail)", () => {
+  it("reaches a letter top but not a platform floating far above everything", () => {
     const room = SECRET_ROOMS[0];
-    const starts = room.spawn.map((sp) => ({ x: sp.col * TILE + TILE / 2, y: sp.row * TILE + 1 }));
-    const tiles = room.level.tiles.map((row, y) => (y === 6 ? row.slice(0, 14) + "####" + row.slice(18) : row));
-    const reach = [...reachableStands({ ...room.level, tiles }, starts).values()];
-    expect(reach.some((p) => p.y === 17 * TILE - PLAYER_SIZE / 2)).toBe(true);
-    expect(reach.some((p) => p.y === 6 * TILE - PLAYER_SIZE / 2)).toBe(false);
-  }, 60000);
+    const tiles = room.level.tiles.map((r, y) => (y === 6 ? r.slice(0, 14) + "####" + r.slice(18) : r));
+    const g = analyseStands({ ...room.level, tiles }, startsOf(room), MARGIN_JUMP);
+    const ys = [...g.nodes.values()].map((p) => p.y);
+    expect(ys).toContain(17 * TILE - PLAYER_SIZE / 2);
+    expect(ys).not.toContain(6 * TILE - PLAYER_SIZE / 2);
+  }, 120000);
+
+  it("reports a deep well as a trap (reachable but impossible to leave)", () => {
+    // Two 9-tile towers with a 2-wide channel between them; the left side has stepping ledges up.
+    const rows: string[] = [];
+    for (let y = 0; y < GRID_H; y++) {
+      const r = Array.from({ length: GRID_W }, (_, x) => (y === 0 || y >= GRID_H - 2 || x < 2 || x >= GRID_W - 2 ? "#" : "."));
+      if (y >= 17 && y <= 25) for (const x of [8, 9, 10, 11, 12, 13, 16, 17, 18, 19, 20, 21]) r[x] = "#";
+      if (y === 22 || y === 18) for (const x of [2, 3, 4]) r[x] = "#";
+      rows.push(r.join(""));
+    }
+    const lv: LevelData = { ...SECRET_ROOMS[0].level, tiles: rows };
+    expect(validateLevel(lv)).toEqual([]);
+    const g = analyseStands(lv, startsOf(SECRET_ROOMS[0]), MARGIN_JUMP);
+    expect(g.trapped.length).toBeGreaterThan(0);
+  }, 120000);
+
+  it("regression: the first PIP layout (open channels down to the floor) fails the strong-connectivity check", () => {
+    const OLD_PIP = [
+      "################################",
+      ...Array.from({ length: 16 }, () => "##............................##"),
+      "##...#####...######..#####....##",
+      "####.#####...######..#####..####",
+      "##...##..##....##....##..##...##",
+      "##...##..##....##....##..##...##",
+      "##...#####.....##....#####....##",
+      "####.#####.....##....#####..####",
+      "##...##........##....##.......##",
+      "##...##......######..##.......##",
+      "##...##......######..##.......##",
+      "################################",
+      "################################",
+    ];
+    const lv: LevelData = { ...SECRET_ROOMS[0].level, tiles: OLD_PIP };
+    expect(validateLevel(lv)).toEqual([]);
+    const oldSpawns = [{ x: 3 * TILE + TILE / 2, y: 25 * TILE + 1 }, { x: 28 * TILE + TILE / 2, y: 25 * TILE + 1 }];
+    const g = analyseStands(lv, oldSpawns, MARGIN_JUMP);
+    expect(g.trapped.length).toBeGreaterThan(0);
+  }, 120000);
 });
 
 describe("source hygiene", () => {
@@ -670,3 +774,4 @@ describe("source hygiene", () => {
     expect(text).not.toMatch(/rng\./);
   });
 });
+

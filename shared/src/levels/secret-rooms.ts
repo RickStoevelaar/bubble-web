@@ -22,41 +22,57 @@ const GLYPHS: Record<string, string[]> = {
   B: ["#####.", "#####.", "##..##", "##..##", "#####.", "##..##", "##..##", "#####.", "#####."],
 };
 
-/** Rows 17..25 hold the letters (they stand on the floor, rows 26-27); the first letter starts at column 5. */
+/** Rows 17..25 hold the letters (they stand on the floor, rows 26-27). */
 const LETTER_TOP = 17;
-const FIRST_COL = 5;
-const LETTER_GAP = 2;
-/** Stepping ledges: 2 tiles wide in each side margin, one tile clear of the letters, so every letter top is within a jump of the one below. */
-const LEDGE_ROWS = [22, 18];
+/** One empty slit column (too narrow to enter) on each side, then the letters with CHANNEL-wide channels between them. */
+const FIRST_COL = 3;
+const CHANNEL = 4;
+/**
+ * Each channel gets two single-tile stepping ledges on opposite sides, leaving a 2-tile-wide lane between them so a
+ * player can always drop back down to the floor (a ledge that spans a channel would trap whoever stands on it).
+ * The first ledge is 4 tiles above the floor and the second 3 tiles higher, so every letter top is within a jump.
+ */
+const LOW_LEDGE_ROW = 22;
+const HIGH_LEDGE_ROW = 19;
 
-function buildRoom(word: string, theme: number): LevelData {
+function buildRoom(word: string, theme: number): { level: LevelData; channels: number[] } {
   const grid: string[][] = Array.from({ length: GRID_H }, (_, y) =>
     Array.from({ length: GRID_W }, (_, x) => (y === 0 || y >= GRID_H - 2 || x < 2 || x >= GRID_W - 2 ? "#" : ".")),
   );
   let col = FIRST_COL;
-  for (const ch of word) {
+  const channels: number[] = [];
+  [...word].forEach((ch, i) => {
     const g = GLYPHS[ch]!;
     g.forEach((line, r) => {
       for (let c = 0; c < line.length; c++) if (line[c] === "#") grid[LETTER_TOP + r]![col + c] = "#";
     });
-    col += g[0]!.length + LETTER_GAP;
-  }
-  for (const row of LEDGE_ROWS) {
-    for (const c of [2, 3, GRID_W - 4, GRID_W - 3]) grid[row]![c] = "#";
-  }
-  return { round: 0, theme, tiles: grid.map((r) => r.join("")), enemies: [], drift: [] };
+    col += g[0]!.length;
+    if (i < word.length - 1) {
+      channels.push(col);
+      const left = i % 2 === 0;
+      grid[LOW_LEDGE_ROW]![left ? col : col + CHANNEL - 1] = "#";
+      grid[HIGH_LEDGE_ROW]![left ? col + CHANNEL - 1 : col] = "#";
+      col += CHANNEL;
+    }
+  });
+  return { level: { round: 0, theme, tiles: grid.map((r) => r.join("")), enemies: [], drift: [] }, channels };
 }
 
-const SPAWN: SecretRoom["spawn"] = [
-  { col: 3, row: GRID_H - 3 },
-  { col: GRID_W - 4, row: GRID_H - 3 },
+const PIP = buildRoom("PIP", 3);
+const POP = buildRoom("POP", 6);
+const WEB = buildRoom("WEB", 9);
+
+/** Players start on the floor in the lane of each channel (one per channel). */
+const spawnsOf = (channels: number[]): SecretRoom["spawn"] => [
+  { col: channels[0]! + 1, row: GRID_H - 3 },
+  { col: channels[1]! + 2, row: GRID_H - 3 },
 ];
 
 /** The three treasure rooms, in door order (rounds 20, 30, 40). */
 export const SECRET_ROOMS: readonly [SecretRoom, SecretRoom, SecretRoom] = [
-  { level: buildRoom("PIP", 3), word: "PIP", fragment: "7K", spawn: SPAWN },
-  { level: buildRoom("POP", 6), word: "POP", fragment: "Q3", spawn: SPAWN },
-  { level: buildRoom("WEB", 9), word: "WEB", fragment: "Z8", spawn: SPAWN },
+  { level: PIP.level, word: "PIP", fragment: "7K", spawn: spawnsOf(PIP.channels) },
+  { level: POP.level, word: "POP", fragment: "Q3", spawn: spawnsOf(POP.channels) },
+  { level: WEB.level, word: "WEB", fragment: "Z8", spawn: spawnsOf(WEB.channels) },
 ];
 
 /** The three fragments in room order; a later task combines them into the Super-mode code. */
