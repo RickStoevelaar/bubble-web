@@ -12,12 +12,16 @@ import {
   SECRET_ROOMS,
   Sim,
   TEST_LEVEL,
+  MARGIN_JUMP,
   TILE,
   TREASURE_VALUES,
   TUNING,
+  analyseStands,
   isSolid,
+  jumpApex,
   levelForState,
   moveBody,
+  startsOfTiles,
   validateLevel,
   type GameState,
   type LevelData,
@@ -549,110 +553,7 @@ describe("restore", () => {
   });
 });
 
-/**
- * Standing-position graph by real physics. Nodes are positions where a body rests (integer x, y on a tile top);
- * edges are what one input policy (walk, or jump then a direction for t1 ticks and another after) reaches
- * through the sim's own `moveBody`, so walking, jumping, dropping and falling are all covered. `jumpVel` lets
- * the caller use a weaker jump to demand a safety margin.
- */
-interface StandGraph {
-  nodes: Map<string, { x: number; y: number }>;
-  /** Reachable from a spawn. */
-  forward: Set<string>;
-  /** Of those, the ones that can get back to a spawn: the spawn's strongly connected component. */
-  component: Set<string>;
-  /** Reachable but unable to return (one-way traps). */
-  trapped: string[];
-  maxRise: number;
-}
-
-function analyseStands(lv: LevelData, starts: { x: number; y: number }[], jumpVel: number = TUNING.jumpVel): StandGraph {
-  const nodes = new Map<string, { x: number; y: number }>();
-  const out = new Map<string, Set<string>>();
-  const queue: string[] = [];
-  const key = (x: number, y: number): string => `${x},${y}`;
-  const add = (x: number, y: number, from?: string): void => {
-    const k = key(x, y);
-    if (!nodes.has(k)) {
-      nodes.set(k, { x, y });
-      queue.push(k);
-    }
-    if (from !== undefined && from !== k) {
-      let set = out.get(from);
-      if (!set) out.set(from, (set = new Set()));
-      set.add(k);
-    }
-  };
-  const startKeys = starts.map((s) => key(s.x, s.y));
-  for (const s of starts) add(s.x, s.y);
-  const dirs = [-1, 0, 1];
-  const t1s = [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 30, 40, 50];
-  const body = { x: 0, y: 0, vx: 0, vy: 0, onGround: true };
-  let maxRise = 0;
-  const simulate = (from: string, x: number, y: number, jump: boolean, d1: number, t1: number, d2: number, total: number): void => {
-    body.x = x;
-    body.y = y;
-    body.vx = 0;
-    body.vy = 0;
-    body.onGround = true;
-    for (let t = 0; t < total; t++) {
-      body.vx = (t < t1 ? d1 : d2) * TUNING.walkSpeed;
-      if (jump && t === 0) {
-        body.vy = jumpVel;
-        body.onGround = false;
-      }
-      moveBody(lv, body, PLAYER_SIZE);
-      if (body.onGround) {
-        maxRise = Math.max(maxRise, y - body.y);
-        add(Math.round(body.x), body.y, from);
-        if (jump) return;
-      }
-    }
-  };
-  for (let i = 0; i < queue.length; i++) {
-    const k = queue[i]!;
-    const s = nodes.get(k)!;
-    for (const d of dirs) simulate(k, s.x, s.y, false, d, 200, d, 200);
-    for (const d1 of dirs) for (const d2 of dirs) for (const t1 of t1s) simulate(k, s.x, s.y, true, d1, t1, d2, 160);
-  }
-  const forward = new Set(nodes.keys());
-  const back = new Map<string, string[]>();
-  for (const [from, tos] of out) {
-    for (const to of tos) {
-      const list = back.get(to);
-      if (list) list.push(from);
-      else back.set(to, [from]);
-    }
-  }
-  const component = new Set<string>(startKeys);
-  const stack = [...startKeys];
-  while (stack.length > 0) {
-    for (const prev of back.get(stack.pop()!) ?? []) {
-      if (!component.has(prev)) {
-        component.add(prev);
-        stack.push(prev);
-      }
-    }
-  }
-  const trapped = [...forward].filter((k) => !component.has(k));
-  return { nodes, forward, component, trapped, maxRise };
-}
-
-/** Height a free jump with `vel` gains, measured by simulating it. */
-function jumpApex(vel: number): number {
-  const floorY = 26 * TILE - PLAYER_SIZE / 2;
-  const body = { x: 60, y: floorY, vx: 0, vy: vel, onGround: false };
-  let top = body.y;
-  for (let t = 0; t < 120; t++) {
-    moveBody(TEST_LEVEL, body, PLAYER_SIZE);
-    top = Math.min(top, body.y);
-  }
-  return floorY - top;
-}
-/** The jump the layouts must be solvable with: at least 4 px weaker than the real one. */
-const MARGIN_JUMP = TUNING.jumpVel + 0.15;
-const startsOf = (room: (typeof SECRET_ROOMS)[number]) =>
-  room.spawn.map((sp) => ({ x: sp.col * TILE + TILE / 2, y: sp.row * TILE + 1 }));
+const startsOf = (room: (typeof SECRET_ROOMS)[number]) => startsOfTiles(room.spawn);
 
 describe("reachability", () => {
   it("the margin jump really is at least 4 px lower than the real jump", () => {

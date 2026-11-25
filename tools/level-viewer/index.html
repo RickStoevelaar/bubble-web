@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Level Viewer</title>
+    <style>
+      :root {
+        --bg: #14161c;
+        --panel: #1c1f27;
+        --line: #2e3340;
+        --text: #dfe3ec;
+        --dim: #8a91a3;
+        --accent: #6cb4ff;
+        --err: #ff6b6b;
+        --warn: #ffb347;
+        --ok: #5fd68a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.4 system-ui, "Segoe UI", sans-serif;
+      }
+      #app {
+        display: grid;
+        grid-template-columns: 340px minmax(768px, 1fr) 300px;
+        gap: 12px;
+        padding: 12px;
+        align-items: start;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        margin-bottom: 12px;
+      }
+      h2 {
+        margin: 0 0 6px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      textarea {
+        width: 100%;
+        height: 300px;
+        background: #0f1116;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        font: 11px/1.25 Consolas, monospace;
+        resize: vertical;
+        white-space: pre;
+      }
+      textarea#exportBox {
+        height: 160px;
+      }
+      button,
+      select,
+      input[type="number"] {
+        background: #272b36;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      label {
+        margin-right: 10px;
+        white-space: nowrap;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin: 6px 0;
+      }
+      #parseError {
+        color: var(--err);
+        min-height: 1.4em;
+        font-family: Consolas, monospace;
+      }
+      #stage {
+        width: 768px;
+        height: 672px;
+        position: relative;
+        background: #000;
+        border: 1px solid var(--line);
+      }
+      canvas {
+        display: block;
+        width: 768px;
+        height: 672px;
+        image-rendering: pixelated;
+      }
+      #hover {
+        color: var(--dim);
+        font-family: Consolas, monospace;
+        margin-top: 4px;
+        min-height: 1.4em;
+      }
+      .legend span {
+        display: inline-block;
+        margin-right: 10px;
+      }
+      .sw {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: -1px;
+      }
+      #issues {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 260px;
+        overflow: auto;
+      }
+      #issues li {
+        padding: 3px 6px;
+        border-left: 3px solid var(--line);
+        margin-bottom: 3px;
+        cursor: pointer;
+        background: #171a21;
+      }
+      #issues li.error {
+        border-left-color: var(--err);
+      }
+      #issues li.warn {
+        border-left-color: var(--warn);
+      }
+      #issues li.sel {
+        outline: 1px solid #ffe14d;
+      }
+      #issues code {
+        color: var(--accent);
+      }
+      #issues .loc {
+        color: var(--dim);
+      }
+      #summary.ok {
+        color: var(--ok);
+      }
+      #summary.bad {
+        color: var(--err);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      td {
+        padding: 2px 4px;
+        border-bottom: 1px solid var(--line);
+      }
+      td:last-child {
+        text-align: right;
+        font-family: Consolas, monospace;
+      }
+      #roundNum {
+        width: 70px;
+      }
+      @media (max-width: 1400px) {
+        #app {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="left">
+        <section>
+          <h2>Level JSON</h2>
+          <textarea id="json" spellcheck="false" aria-label="Level JSON"></textarea>
+          <div id="parseError" role="alert"></div>
+          <div class="row">
+            <label>Load sample
+              <select id="sample">
+                <option value="">-</option>
+                <option value="test">Test level</option>
+                <option value="boss">Boss arena</option>
+                <option value="PIP">Secret room PIP</option>
+                <option value="POP">Secret room POP</option>
+                <option value="WEB">Secret room WEB</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label>Lint as
+              <select id="kind">
+                <option value="auto">auto (round 100 = boss)</option>
+                <option value="normal">normal round</option>
+                <option value="boss">boss arena</option>
+                <option value="secret">secret room</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <section>
+          <h2>Export</h2>
+          <div class="row">
+            <button id="exportBtn">Export normalized JSON</button>
+            <button id="copyBtn">Copy</button>
+            <label>Import file <input id="importFile" type="file" accept=".json,application/json" /></label>
+          </div>
+          <textarea id="exportBox" spellcheck="false" readonly aria-label="Exported JSON"></textarea>
+        </section>
+      </div>
+
+      <div id="center">
+        <div id="stage"><canvas id="view" width="768" height="672"></canvas></div>
+        <div id="hover"></div>
+        <div class="row">
+          <label><input type="checkbox" id="optGrid" checked /> grid</label>
+          <label><input type="checkbox" id="optNodes" checked /> standing nodes</label>
+          <label><input type="checkbox" id="optProblems" checked /> problems</label>
+          <label><input type="checkbox" id="optEnemies" checked /> enemies</label>
+          <label><input type="checkbox" id="optDrift" checked /> drift</label>
+          <label><input type="checkbox" id="optSpawns" checked /> player spawns</label>
+        </div>
+        <div class="legend">
+          <span><i class="sw" style="background: #3ddc84"></i>standing node</span>
+          <span><i class="sw" style="background: #ff3b3b"></i>trapped / unreachable</span>
+          <span><i class="sw" style="background: #ff9a1f"></i>wrap hazard</span>
+          <span><i class="sw" style="background: #ffe14d"></i>selected issue</span>
+        </div>
+      </div>
+
+      <div id="right">
+        <section>
+          <h2>Rounds</h2>
+          <div class="row">
+            <button id="prev" title="Left arrow">&larr;</button>
+            <input id="roundNum" type="number" min="1" value="1" aria-label="Round number" />
+            <button id="next" title="Right arrow">&rarr;</button>
+            <span id="roundCount"></span>
+          </div>
+          <div class="row"><select id="roundList" size="1" style="width: 100%" aria-label="Rounds"></select></div>
+          <div id="source" style="color: var(--dim)"></div>
+        </section>
+        <section>
+          <h2>Report</h2>
+          <div id="summary"></div>
+          <ul id="issues"></ul>
+        </section>
+        <section>
+          <h2>Stats</h2>
+          <table id="stats"></table>
+        </section>
+      </div>
+    </div>
+    <script src="viewer.js"></script>
+  </body>
+</html>

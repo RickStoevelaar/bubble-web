@@ -377,6 +377,16 @@ function backgroundLayer(sheet: SpriteSheet, level: LevelData | undefined, theme
 }
 
 /**
+ * Paints the theme fill and wall tiles of `level` in game coordinates (the same layer `render` uses), for tools
+ * such as the level viewer. The caller owns the canvas transform and image smoothing.
+ */
+export function drawLevelBackground(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, level: LevelData): void {
+  const theme = (((level.theme ?? 0) % 10) + 10) % 10;
+  const bg = backgroundLayer(sheet, level, theme);
+  ctx.drawImage(bg.canvas, 0, 0, FIELD_W, FIELD_H, 0, 0, FIELD_W, FIELD_H);
+}
+
+/**
  * Draw one frame of `state` in game coordinates (0..FIELD_W x 0..FIELD_H). The
  * caller owns the canvas transform and image smoothing. Never mutates `state`.
  */

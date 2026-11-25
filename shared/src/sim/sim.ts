@@ -1,5 +1,4 @@
-import { GRID_H, TILE, TUNING } from "../constants";
-import { isSolid } from "../level";
+import { TILE, TUNING } from "../constants";
 import { levelForState } from "../levels/secret-rooms";
 import type { LevelData } from "../level";
 import { Rng } from "../rng";
@@ -12,11 +11,10 @@ import { maybeSpawnItem, resolvePendingRound } from "./powers";
 import { addScore, nextLifeThreshold } from "./scoring";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
+import { P1_SPAWN_COL, P2_SPAWN_COL, spawnFloorRow } from "./spawn";
 import { placeAtSecretSpawn, repairSecret } from "./secret";
 import { clearSpecials, newLetters, repairEffects, repairLetters, stepEffects, stepSpecialSpawns } from "./specials";
 
-const P1_SPAWN_COL = 3;
-const P2_SPAWN_COL = 28;
 
 function newPlayer(id: 0 | 1): PlayerState {
   return {
@@ -60,13 +58,7 @@ function repairPlayer(p: Partial<PlayerState>): void {
 /** Places a player standing on the lowest floor in the spawn column. */
 function placeAtSpawn(lv: LevelData, p: PlayerState): void {
   const col = p.id === 0 ? P1_SPAWN_COL : P2_SPAWN_COL;
-  let floorRow = GRID_H;
-  for (let ty = GRID_H - 1; ty >= 0; ty--) {
-    if (isSolid(lv, col, ty) && !isSolid(lv, col, ty - 1)) {
-      floorRow = ty;
-      break;
-    }
-  }
+  const floorRow = spawnFloorRow(lv, col);
   p.x = col * TILE + TILE / 2;
   p.y = floorRow * TILE - PLAYER_SIZE / 2;
   p.vx = 0;

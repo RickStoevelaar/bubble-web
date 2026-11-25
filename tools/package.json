@@ -1,0 +1,11 @@
+{
+  "name": "@bubble/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node check-levels/build.mjs && node level-viewer/build.mjs",
+    "check-levels": "node check-levels/build.mjs && node check-levels/dist/cli.js",
+    "viewer": "node level-viewer/build.mjs --serve --watch"
+  }
+}
