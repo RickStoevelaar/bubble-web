@@ -170,7 +170,7 @@ function render(): void {
     for (const s of overlay.spawns) {
       const cx = s.col * T + T / 2;
       const cy = s.row * T + T / 2;
-      ctx.fillStyle = s.player === 1 ? "#4aa8ff" : "#ff6bd0";
+      ctx.fillStyle = s.bad ? "#ff3b3b" : s.player === 1 ? "#4aa8ff" : "#ff6bd0";
       ctx.beginPath();
       ctx.moveTo(cx, cy - 12);
       ctx.lineTo(cx + 12, cy);
@@ -178,10 +178,10 @@ function render(): void {
       ctx.lineTo(cx - 12, cy);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = s.bad ? "#fff" : "#000";
+      ctx.lineWidth = s.bad ? 2 : 1;
       ctx.stroke();
-      ctx.fillStyle = "#000";
+      ctx.fillStyle = s.bad ? "#fff" : "#000";
       ctx.font = "bold 10px Consolas, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";

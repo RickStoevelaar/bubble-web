@@ -29,7 +29,7 @@ describe("computeOverlay", () => {
     expect(o.trapped).toEqual([]);
     expect(o.unreachableRuns).toEqual([]);
     expect(o.wrapColumns).toEqual([]);
-    expect(o.spawns).toEqual([{ player: 1, col: 3, row: 25 }, { player: 2, col: 28, row: 25 }]);
+    expect(o.spawns).toEqual([{ player: 1, col: 3, row: 25, bad: false }, { player: 2, col: 28, row: 25, bad: false }]);
     // every node rests on a solid tile somewhere under its 14 px body, with the row above that tile empty
     for (const n of o.nodes) {
       const under = [Math.floor((n.x - 7) / 8), Math.floor((n.x + 6.99) / 8)];
@@ -71,6 +71,15 @@ describe("computeOverlay", () => {
     expect(o.enemies).toEqual([{ type: "boss", letter: "X", col: 15, row: 8 }]);
     expect(o.drift).toEqual([{ col: 5, row: 5, dx: 1, dy: -1 }]);
     expect(o.issues).toEqual([]);
+  }, 120000);
+
+  it("flags spawn tiles when a spawn-* error fires, and not otherwise", () => {
+    const split = CLOSED.map((r) => r.slice(0, 15) + "##" + r.slice(17));
+    const bad = computeOverlay(lvl(split));
+    expect(bad.issues.some((i) => i.code === "spawn-disconnected")).toBe(true);
+    expect(bad.spawns.map((s) => s.bad)).toEqual([true, true]);
+    const ok = computeOverlay(lvl(CLOSED));
+    expect(ok.spawns.map((s) => s.bad)).toEqual([false, false]);
   }, 120000);
 
   it("an invalid level gives an empty overlay with a validate error, not a throw", () => {

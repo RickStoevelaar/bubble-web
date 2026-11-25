@@ -99,7 +99,7 @@ describe("check-levels run()", () => {
     const floating = lv(1, withLedge(10), [walker(20, 12)]);
     const h = harness({ "w.json": json([floating]) });
     expect(run(["--file", "w.json", "--json"], h.io)).toBe(0);
-    expect(parsed(h).levels[0]!.issues.map((i) => i.severity)).toEqual(["warn"]);
+    expect(parsed(h).levels[0]!.issues.map((i) => i.severity)).toEqual(["warn", "warn"]);
     expect(parsed(h).levels[0]!.status).toMatch(/warn/);
     const s = harness({ "w.json": json([floating]) });
     expect(run(["--file", "w.json", "--strict"], s.io)).toBe(1);
@@ -117,6 +117,21 @@ describe("check-levels run()", () => {
     expect(run(["--file", "c.json", "--no-reach", "--json"], h.io)).toBe(0);
     expect(parsed(h).levels[0]!.nodes).toBe(0);
   });
+
+  it("--max-nodes caps the reach analysis and fails with reach-limit", () => {
+    const h = harness({ "c.json": json(CLEAN) });
+    expect(run(["--file", "c.json", "--max-nodes", "50", "--json"], h.io)).toBe(1);
+    expect(parsed(h).levels[0]!.issues.map((i) => i.code)).toContain("reach-limit");
+    const bad = harness({ "c.json": json(CLEAN) });
+    expect(run(["--file", "c.json", "--max-nodes", "zero"], bad.io)).toBe(2);
+  }, 120000);
+
+  it("a sealed-room level reports spawn-disconnected against its round", () => {
+    const split = lv(1, CLOSED.map((r) => r.slice(0, 15) + "##" + r.slice(17)), [walker(), walker(22, 25)]);
+    const h = harness({ "s.json": json([split]) });
+    expect(run(["--file", "s.json", "--json"], h.io)).toBe(1);
+    expect(parsed(h).levels[0]!.issues.map((i) => i.code)).toContain("spawn-disconnected");
+  }, 120000);
 
   it("a missing file prints a clear error and exits 2", () => {
     const h = harness({});

@@ -20,7 +20,8 @@ export interface Overlay {
   unreachableRuns: PlatformRun[];
   /** Wrap-hazard columns (orange). */
   wrapColumns: number[];
-  spawns: { player: 1 | 2; col: number; row: number }[];
+  /** `bad`: a spawn-* error points at this tile (the viewer paints it red). */
+  spawns: { player: 1 | 2; col: number; row: number; bad: boolean }[];
   enemies: { type: EnemyType; letter: string; col: number; row: number }[];
   drift: DriftCell[];
   stats: LevelStats;
@@ -46,7 +47,12 @@ export function computeOverlay(level: LevelData, opts: LintOptions = {}): Overla
     trapped: report.trapped.map(asNode),
     unreachableRuns: report.unreachableRuns,
     wrapColumns: report.wrapColumns,
-    spawns: report.spawns.map((s, i) => ({ player: (i === 0 ? 1 : 2) as 1 | 2, col: s.col, row: s.row })),
+    spawns: report.spawns.map((s, i) => ({
+      player: (i === 0 ? 1 : 2) as 1 | 2,
+      col: s.col,
+      row: s.row,
+      bad: report.issues.some((x) => x.severity === "error" && x.code.startsWith("spawn-") && x.col === s.col && x.row === s.row),
+    })),
     enemies: enemies
       .filter((e) => e && typeof e === "object")
       .map((e) => ({ type: e.type, letter: enemyLetter(e.type), col: e.col, row: e.row })),

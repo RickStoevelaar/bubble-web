@@ -147,10 +147,109 @@ describe("rule spawn", () => {
   it("a walker with a floor within 3 rows is fine", () => {
     expect(find(lintLevel(mk({ enemies: [walker(10, 23)] }), FAST), "spawn")).toEqual([]);
   });
-  it("errors when a player spawn column has no floor", () => {
+});
+
+const errorCodes = (issues: LintIssue[]): string[] => [...new Set(issues.filter((i) => i.severity === "error").map((i) => i.code))];
+const fill = (rows: string[], r0: number, r1: number, c0: number, c1: number, ch: "#" | "."): string[] =>
+  edit(rows, (g) => {
+    for (let y = r0; y <= r1; y++) for (let x = c0; x <= c1; x++) g[y]![x] = ch;
+  });
+
+describe("player spawn rules", () => {
+  it("clean: a closed room trips none of the spawn rules", () => {
+    const issues = lintLevel(mk());
+    expect(issues.filter((i) => i.code.startsWith("spawn-") || i.code === "enemy-space")).toEqual([]);
+  }, 120000);
+
+  it("spawn-headroom: no floor under a spawn column", () => {
     const tiles = CLOSED_ROWS.map((r) => r.slice(0, 3) + "." + r.slice(4));
-    const issues = lintLevel(mk({ tiles }), FAST);
-    expect(find(issues, "spawn", "error").some((i) => i.col === 3)).toBe(true);
+    const issues = lintLevel(mk({ tiles }));
+    expect(errorCodes(issues)).toEqual(["spawn-headroom"]);
+    expect(find(issues, "spawn-headroom")[0]!.col).toBe(3);
+  }, 120000);
+
+  it("spawn-headroom: a 1-wide shaft cannot hold the 14 px body (P1 sealed in a shaft)", () => {
+    const issues = lintLevel(mk({ tiles: fill(CLOSED_ROWS, 12, 25, 4, 4, "#") }));
+    expect(errorCodes(issues)).toEqual(["spawn-headroom"]);
+  }, 120000);
+
+  it("spawn-headroom: a low ceiling leaves only 1 empty row above the spawn", () => {
+    const issues = lintLevel(mk({ tiles: put(CLOSED_ROWS, 24, 2, 6, "#") }));
+    expect(errorCodes(issues)).toEqual(["spawn-headroom"]);
+    expect(find(issues, "spawn-headroom")[0]).toMatchObject({ col: 3, row: 25 });
+  }, 120000);
+
+  it("spawn-headroom: an explicit spawn tile with no solid tile below it", () => {
+    const issues = lintLevel(mk(), { spawns: [{ col: 3, row: 20 }, { col: 28, row: 25 }] });
+    expect(errorCodes(issues)).toEqual(["spawn-headroom"]);
+  }, 120000);
+
+  it("spawn-sealed: a pocket with fewer than 12 standing positions", () => {
+    const lv = mk({ tiles: fill(CLOSED_ROWS, 0, 27, 5, 5, "#") });
+    const both = [{ col: 3, row: 25 }, { col: 3, row: 25 }];
+    const issues = lintLevel(lv, { spawns: both });
+    expect(errorCodes(issues)).toEqual(["spawn-sealed"]);
+    expect(errorCodes(lintLevel(lv, { spawns: both, minSpawnNodes: 5 }))).toEqual([]);
+  }, 120000);
+
+  it("spawn-disconnected: P1 and P2 in two separate sealed rooms with plenty of nodes", () => {
+    const lv = mk({ tiles: fill(CLOSED_ROWS, 0, 27, 15, 16, "#"), enemies: [walker(10, 25), walker(22, 25)] });
+    const issues = lintLevel(lv);
+    expect(errorCodes(issues)).toEqual(["spawn-disconnected"]);
+    expect(find(issues, "spawn-disconnected").length).toBe(2);
+    expect(find(issues, "spawn-sealed")).toEqual([]);
+    expect(find(issues, "reach-trap")).toEqual([]);
+  }, 120000);
+
+  it("spawn-disconnected also fires one way: a ledge P2 can drop from but P1 cannot climb to", () => {
+    const lv = mk({ tiles: put(CLOSED_ROWS, 18, 26, 29, "#") });
+    const issues = lintLevel(lv, { spawns: [{ col: 3, row: 25 }, { col: 27, row: 17 }] });
+    expect(find(issues, "spawn-disconnected").length).toBe(1);
+  }, 120000);
+});
+
+describe("rule enemy-space", () => {
+  const box = (): string[] => fill(fill(CLOSED_ROWS, 22, 25, 20, 25, "#"), 23, 24, 21, 24, ".");
+  it("warns for a ground-bound enemy in a sealed-off area; errors with strictEnemies", () => {
+    const lv = mk({ tiles: box(), enemies: [walker(10, 25), walker(22, 24)] });
+    const issues = lintLevel(lv);
+    expect(errorCodes(issues)).toEqual([]);
+    expect(find(issues, "enemy-space", "warn")).toEqual([expect.objectContaining({ col: 22, row: 24 })]);
+    expect(find(lintLevel(lv, { strictEnemies: true }), "enemy-space", "error").length).toBe(1);
+  }, 120000);
+  it("warns for a flyer sealed into the box", () => {
+    const lv = mk({ tiles: box(), enemies: [walker(10, 25), { type: "flyer", col: 22, row: 23, delayTicks: 0 }] });
+    expect(find(lintLevel(lv, { reach: false }), "enemy-space", "warn").length).toBe(1);
+  });
+  it("clean: a walker on the floor and a flyer in the open air", () => {
+    const lv = mk({ enemies: [walker(10, 25), { type: "flyer", col: 22, row: 10, delayTicks: 0 }] });
+    expect(find(lintLevel(lv), "enemy-space")).toEqual([]);
+  }, 120000);
+});
+
+describe("reach cost cap", () => {
+  const arena = (): string[] => {
+    let t = CLOSED_ROWS;
+    for (const r of [22, 18, 14, 10, 6]) t = put(t, r, 4, 27, "#");
+    return t;
+  };
+  it("raises reach-limit instead of grinding on a layout past maxNodes", () => {
+    const issues = lintLevel(mk({ tiles: arena() }), { maxNodes: 200 });
+    expect(errorCodes(issues)).toEqual(["reach-limit"]);
+    expect(find(issues, "reach-limit")[0]!.message).toMatch(/200 standing positions/);
+  }, 120000);
+  it("the default cap does not trigger on the known levels", () => {
+    expect(find(lintLevel(TEST_LEVEL), "reach-limit")).toEqual([]);
+    expect(find(lintLevel(BOSS_ARENA, { kind: "boss" }), "reach-limit")).toEqual([]);
+  }, 120000);
+});
+
+describe("malformed grids", () => {
+  it("a secret-kind level with a short or ragged grid yields errors and does not throw", () => {
+    const issues = lintLevel(mk({ tiles: CLOSED_ROWS.slice(0, 20), enemies: [] }), { kind: "secret" });
+    expect(errorCodes(issues)).toContain("validate");
+    const ragged = mk({ tiles: CLOSED_ROWS.map((r, i) => (i === 27 ? r.slice(1) : r)), enemies: [] });
+    expect(errorCodes(lintLevel(ragged, { kind: "secret" }))).toContain("validate");
   });
 });
 
@@ -163,7 +262,7 @@ describe("rule reach", () => {
       if (y === 22 || y === 18) for (const x of [2, 3, 4]) r[x] = "#";
       rows.push(r.join(""));
     }
-    const issues = lintLevel(mk({ tiles: rows }), { spawns: SECRET_ROOMS[0].spawn });
+    const issues = lintLevel(mk({ tiles: rows }));
     expect(find(issues, "reach-trap", "error").length).toBeGreaterThan(0);
   }, 120000);
 

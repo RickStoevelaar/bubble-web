@@ -98,6 +98,23 @@ describe("reach analyzer (moved from the secrets test)", () => {
   }, 120000);
 });
 
+describe("analyseStands options", () => {
+  const starts = () => startsOfTiles(playerSpawnTiles(TEST_LEVEL).map((s) => s!));
+  it("reports per-spawn reach and is not limited by default", () => {
+    const g = analyseStands(TEST_LEVEL, starts(), MARGIN_JUMP);
+    expect(g.limited).toBe(false);
+    expect(g.startKeys).toHaveLength(2);
+    expect(g.reachFrom).toHaveLength(2);
+    expect(g.reachFrom[0]!.has(g.startKeys[1]!)).toBe(true);
+    expect(g.reachFrom[1]!.has(g.startKeys[0]!)).toBe(true);
+  }, 120000);
+  it("maxNodes stops exploring and flags the partial graph", () => {
+    const g = analyseStands(TEST_LEVEL, starts(), MARGIN_JUMP, { maxNodes: 100 });
+    expect(g.limited).toBe(true);
+    expect(g.nodes.size).toBeLessThanOrEqual(100);
+  }, 120000);
+});
+
 describe("playerSpawnTiles", () => {
   it("gives P1 column 3 and P2 column 28 standing on the lowest floor", () => {
     expect(playerSpawnTiles(TEST_LEVEL)).toEqual([{ col: 3, row: 25 }, { col: 28, row: 25 }]);

@@ -1,9 +1,9 @@
 import { GRID_H, GRID_W, TILE, TUNING } from "../constants";
-import { validateLevel } from "../level";
+import { isSolid, validateLevel } from "../level";
 import type { EnemySpawn, EnemyType, LevelData } from "../level";
-import { playerSpawnTiles } from "../sim/spawn";
+import { P1_SPAWN_COL, P2_SPAWN_COL, playerSpawnTiles } from "../sim/spawn";
 import { PLAYER_SIZE } from "../sim/player";
-import { MARGIN_JUMP, analyseStands, jumpApex, startsOfTiles, unreachedRuns } from "./reach";
+import { DEFAULT_MAX_NODES, MARGIN_JUMP, analyseStands, jumpApex, startsOfTiles, unreachedRuns } from "./reach";
 import type { PlatformRun, StandGraph } from "./reach";
 
 /**
@@ -38,6 +38,12 @@ export interface LintOptions {
   jumpVel?: number;
   /** Set false to skip the (slow) reach analysis. */
   reach?: boolean;
+  /** Cap on standing positions in the reach analysis (default `DEFAULT_MAX_NODES`); past it the lint fails with `reach-limit`. */
+  maxNodes?: number;
+  /** Standing positions each player spawn must reach beyond its own (default 12); fewer means a sealed pocket. */
+  minSpawnNodes?: number;
+  /** Make `enemy-space` an error instead of a warning. */
+  strictEnemies?: boolean;
 }
 
 export interface LevelStats {
@@ -117,10 +123,42 @@ export function levelStats(level: LevelData, graph?: Pick<StandGraph, "nodes">):
   return stats;
 }
 
-function runAnalysis(level: LevelData, spawns: readonly { col: number; row: number }[] | undefined, jumpVel: number) {
+function runAnalysis(level: LevelData, spawns: readonly { col: number; row: number }[] | undefined, jumpVel: number, maxNodes?: number) {
   const tiles = (spawns ?? playerSpawnTiles(level)).filter((s): s is { col: number; row: number } => s !== null);
   if (tiles.length === 0) return null;
-  return { tiles, graph: analyseStands(level, startsOfTiles(tiles), jumpVel) };
+  return { tiles, graph: analyseStands(level, startsOfTiles(tiles), jumpVel, maxNodes === undefined ? {} : { maxNodes }) };
+}
+
+/**
+ * Why a player cannot stand on spawn tile `s`, or null when it is fine. The body is placed exactly as the sim does
+ * (centre on the tile, feet on the floor below), so its real PLAYER_SIZE footprint must be empty and the tile under
+ * the spawn solid.
+ */
+function standProblem(level: LevelData, s: { col: number; row: number }): string | null {
+  if (!isInt(s.col) || !isInt(s.row) || s.col < 0 || s.col >= GRID_W || s.row < 0 || s.row >= GRID_H) return "is outside the grid";
+  if (!isSolid(level, s.col, s.row + 1)) return "has no solid tile under it";
+  const [p] = startsOfTiles([s]);
+  const half = PLAYER_SIZE / 2;
+  for (let ty = Math.floor((p!.y - half) / TILE); ty <= Math.floor((p!.y + half - 0.001) / TILE); ty++) {
+    for (let tx = Math.floor((p!.x - half) / TILE); tx <= Math.floor((p!.x + half - 0.001) / TILE); tx++) {
+      if (isSolid(level, tx, ty)) return `has no headroom: the ${PLAYER_SIZE} px body overlaps a solid tile at (${tx}, ${ty}) (it needs 2 empty rows over its width)`;
+    }
+  }
+  return null;
+}
+
+/** Empty tiles connected (4-way, wrapping top to bottom) to any of `seeds`. */
+function openRegion(level: LevelData, seeds: readonly { col: number; row: number }[]): Set<string> {
+  const seen = new Set<string>();
+  const stack = seeds.map((s) => [s.col, s.row] as const).slice();
+  while (stack.length > 0) {
+    const [x, y0] = stack.pop()!;
+    const y = (y0 + GRID_H) % GRID_H;
+    if (x < 0 || x >= GRID_W || at(level, x, y) || seen.has(`${x},${y}`)) continue;
+    seen.add(`${x},${y}`);
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  return seen;
 }
 
 /** Lints one level and returns the issues. See `lintReport` for the data behind them. */
@@ -150,7 +188,7 @@ export function lintReport(level: LevelData, opts: LintOptions = {}): LintReport
   }
   const problems = validateLevel(level);
   for (const p of problems) issues.push(err("validate", p));
-  if (problems.some((p) => /rows?\b.*(length|expected)|illegal characters|expected \d+ rows/.test(p))) {
+  if (!gridOk(level)) {
     report.stats = levelStats(level);
     return report;
   }
@@ -230,33 +268,82 @@ export function lintReport(level: LevelData, opts: LintOptions = {}): LintReport
     }
   }
 
-  // 6. reach
+  // 6. reach, spawns and enemy space
   const jumpVel = opts.jumpVel ?? MARGIN_JUMP;
   const wantSpawns = opts.spawns ?? playerSpawnTiles(level);
   const spawnTiles: { col: number; row: number }[] = [];
+  let spawnsOk = true;
   wantSpawns.forEach((s, i) => {
-    if (s === null) issues.push(err("spawn", `player ${i + 1} has no floor in its spawn column ${i === 0 ? 3 : 28}`, i === 0 ? 3 : 28));
-    else spawnTiles.push(s);
+    const col = i === 0 ? P1_SPAWN_COL : P2_SPAWN_COL;
+    if (s === null) {
+      issues.push(err("spawn-headroom", `player ${i + 1} has no floor in its spawn column ${col}: nothing to stand on`, col));
+      spawnsOk = false;
+      return;
+    }
+    spawnTiles.push(s);
+    const why = standProblem(level, s);
+    if (why !== null) {
+      issues.push(err("spawn-headroom", `player ${i + 1} spawn tile (${s.col}, ${s.row}) ${why}`, s.col, s.row));
+      spawnsOk = false;
+    }
   });
   report.spawns = spawnTiles;
-  const analysis = opts.reach === false || spawnTiles.length === 0 ? null : runAnalysis(level, spawnTiles, jumpVel);
+  const maxNodes = opts.maxNodes ?? DEFAULT_MAX_NODES;
+  const minNodes = opts.minSpawnNodes ?? 12;
+  const analysis = opts.reach === false || !spawnsOk || spawnTiles.length === 0 ? null : runAnalysis(level, spawnTiles, jumpVel, maxNodes);
+  let usable: StandGraph | null = null;
   if (analysis) {
     const g = (report.graph = analysis.graph);
-    report.trapped = g.trapped.map((k) => g.nodes.get(k)!);
-    if (g.trapped.length > 0) {
-      const first = report.trapped[0]!;
-      issues.push(
-        err("reach-trap", `${g.trapped.length} standing position(s) are reachable but cannot return to the spawn (first near col ${Math.floor(first.x / TILE)}, row ${Math.round((first.y + PLAYER_SIZE / 2) / TILE)}): a one-way trap`, Math.floor(first.x / TILE), Math.round((first.y + PLAYER_SIZE / 2) / TILE)),
-      );
-    }
-    report.unreachableRuns = unreachedRuns(level, g.nodes.values(), spawnTiles);
-    if (report.unreachableRuns.length > (opts.allowUnreachable ?? 0)) {
-      for (const r of report.unreachableRuns) {
-        issues.push(err("reach-unreachable", `platform run in row ${r.row}, columns ${r.from}-${r.to} cannot be reached`, r.from, r.row));
+    if (g.limited) {
+      issues.push(err("reach-limit", `reach analysis exceeded ${maxNodes} standing positions: simplify the layout or raise maxNodes`));
+    } else {
+      usable = g;
+      report.trapped = g.trapped.map((k) => g.nodes.get(k)!);
+      if (g.trapped.length > 0) {
+        const first = report.trapped[0]!;
+        issues.push(
+          err("reach-trap", `${g.trapped.length} standing position(s) are reachable but cannot return to the spawn (first near col ${Math.floor(first.x / TILE)}, row ${Math.round((first.y + PLAYER_SIZE / 2) / TILE)}): a one-way trap`, Math.floor(first.x / TILE), Math.round((first.y + PLAYER_SIZE / 2) / TILE)),
+        );
       }
+      spawnTiles.forEach((s, i) => {
+        const beyond = g.reachFrom[i]!.size - 1;
+        if (beyond < minNodes) {
+          issues.push(err("spawn-sealed", `player ${i + 1} reaches only ${beyond} standing positions beyond its start (at least ${minNodes} needed): the spawn is sealed in a pocket`, s.col, s.row));
+        }
+        spawnTiles.forEach((t, j) => {
+          if (i !== j && !g.reachFrom[i]!.has(g.startKeys[j]!)) {
+            issues.push(err("spawn-disconnected", `player ${j + 1}'s spawn cannot be reached from player ${i + 1}'s spawn`, t.col, t.row));
+          }
+        });
+      });
+      report.unreachableRuns = unreachedRuns(level, g.nodes.values());
+      if (report.unreachableRuns.length > (opts.allowUnreachable ?? 0)) {
+        for (const r of report.unreachableRuns) {
+          issues.push(err("reach-unreachable", `platform run in row ${r.row}, columns ${r.from}-${r.to} cannot be reached`, r.from, r.row));
+        }
+      }
+      const limit = jumpApex(TUNING.jumpVel) - 4;
+      if (g.maxRise > limit) issues.push(err("reach-rise", `largest rise used is ${g.maxRise}px, above the ${limit}px allowed (real apex minus a 4px margin)`));
     }
-    const limit = jumpApex(TUNING.jumpVel) - 4;
-    if (g.maxRise > limit) issues.push(err("reach-rise", `largest rise used is ${g.maxRise}px, above the ${limit}px allowed (real apex minus a 4px margin)`));
+  }
+  if (spawnsOk && spawnTiles.length > 0 && kind !== "secret") {
+    const region = openRegion(level, spawnTiles);
+    const sev = opts.strictEnemies === true ? err : warn;
+    level.enemies.forEach((e, i) => {
+      if (!isInt(e.col) || !isInt(e.row) || e.col < 0 || e.col >= GRID_W || e.row < 0 || e.row >= GRID_H || at(level, e.col, e.row) || e.type === "hurry") return;
+      const where = `enemy #${i + 1} (${e.type}) at (${e.col}, ${e.row})`;
+      if (GROUND_BOUND.has(e.type)) {
+        if (usable === null) return;
+        const cx = e.col * TILE + TILE / 2;
+        const stands = [...usable.nodes.values()].some((n) => {
+          const feet = Math.round((n.y + PLAYER_SIZE / 2) / TILE);
+          return feet > e.row && feet <= e.row + 3 && Math.abs(n.x - cx) < (TILE + PLAYER_SIZE) / 2;
+        });
+        if (!stands) issues.push(sev("enemy-space", `${where} has no standing position a player can reach within 3 rows below it`, e.col, e.row));
+      } else if (!region.has(`${e.col},${e.row}`)) {
+        issues.push(sev("enemy-space", `${where} sits in open space no player spawn connects to`, e.col, e.row));
+      }
+    });
   }
   report.stats = levelStats(level, report.graph ?? { nodes: new Map() });
   return report;

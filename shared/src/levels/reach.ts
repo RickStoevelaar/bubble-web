@@ -14,6 +14,9 @@ import { TEST_LEVEL } from "./test-level";
 /** The jump the layouts must be solvable with: at least 4 px weaker than the real one (`TUNING.jumpVel` is upward-negative). */
 export const MARGIN_JUMP = TUNING.jumpVel + 0.15;
 
+/** Default cap on standing positions per analysis (a 32x28 grid cannot realistically reach it). */
+export const DEFAULT_MAX_NODES = 20_000;
+
 /** Standing-position graph produced by `analyseStands`. Node keys are `"x,y"` (body centre in pixels). */
 export interface StandGraph {
   nodes: Map<string, { x: number; y: number }>;
@@ -21,8 +24,14 @@ export interface StandGraph {
   forward: Set<string>;
   /** Of those, the ones that can get back to a spawn: the spawn's strongly connected component. */
   component: Set<string>;
-  /** Reachable but unable to return (one-way traps). */
+  /** Reachable but unable to return to the spawn they were reached from (one-way traps). */
   trapped: string[];
+  /** Node key of each start, in the order given. */
+  startKeys: string[];
+  /** For each start, every node reachable from it alone (the start included). */
+  reachFrom: Set<string>[];
+  /** True when exploring stopped at `maxNodes`: the graph is partial and must not be trusted for verdicts. */
+  limited: boolean;
   /** Largest height (px) a jump gained between a standing spot and the next one, wrap falls excluded. */
   maxRise: number;
 }
@@ -33,9 +42,18 @@ export interface StandGraph {
  * through the sim's own `moveBody`, so walking, jumping, dropping and falling are all covered. `jumpVel` lets
  * the caller use a weaker jump to demand a safety margin.
  *
- * `starts` are body-centre positions already resting on a floor (see `startsOfTiles`).
+ * `starts` are body-centre positions already resting on a floor (see `startsOfTiles`). `opts.maxNodes` (default
+ * `DEFAULT_MAX_NODES`) bounds the work deterministically: once that many standing positions exist, no more are
+ * added, exploring stops and `limited` is true.
  */
-export function analyseStands(lv: LevelData, starts: { x: number; y: number }[], jumpVel: number = TUNING.jumpVel): StandGraph {
+export function analyseStands(
+  lv: LevelData,
+  starts: { x: number; y: number }[],
+  jumpVel: number = TUNING.jumpVel,
+  opts: { maxNodes?: number } = {},
+): StandGraph {
+  const maxNodes = opts.maxNodes ?? DEFAULT_MAX_NODES;
+  let limited = false;
   const nodes = new Map<string, { x: number; y: number }>();
   const out = new Map<string, Set<string>>();
   const queue: string[] = [];
@@ -43,6 +61,10 @@ export function analyseStands(lv: LevelData, starts: { x: number; y: number }[],
   const add = (x: number, y: number, from?: string): void => {
     const k = key(x, y);
     if (!nodes.has(k)) {
+      if (nodes.size >= maxNodes) {
+        limited = true;
+        return;
+      }
       nodes.set(k, { x, y });
       queue.push(k);
     }
@@ -83,7 +105,7 @@ export function analyseStands(lv: LevelData, starts: { x: number; y: number }[],
       }
     }
   };
-  for (let i = 0; i < queue.length; i++) {
+  for (let i = 0; i < queue.length && !limited; i++) {
     const k = queue[i]!;
     const s = nodes.get(k)!;
     for (const d of dirs) simulate(k, s.x, s.y, false, d, 200, d, 200);
@@ -98,18 +120,29 @@ export function analyseStands(lv: LevelData, starts: { x: number; y: number }[],
       else back.set(to, [from]);
     }
   }
-  const component = new Set<string>(startKeys);
-  const stack = [...startKeys];
-  while (stack.length > 0) {
-    for (const prev of back.get(stack.pop()!) ?? []) {
-      if (!component.has(prev)) {
-        component.add(prev);
-        stack.push(prev);
+  const closure = (seeds: string[], edges: (k: string) => Iterable<string>): Set<string> => {
+    const set = new Set<string>(seeds);
+    const todo = [...seeds];
+    while (todo.length > 0) {
+      for (const next of edges(todo.pop()!)) {
+        if (!set.has(next)) {
+          set.add(next);
+          todo.push(next);
+        }
       }
     }
-  }
-  const trapped = [...forward].filter((k) => !component.has(k));
-  return { nodes, forward, component, trapped, maxRise };
+    return set;
+  };
+  const component = closure(startKeys, (k) => back.get(k) ?? []);
+  // Per spawn: what it reaches, and of that, what can come back to it. Two sealed rooms cannot hide each other's traps.
+  const reachFrom = startKeys.map((k) => closure([k], (n) => out.get(n) ?? []));
+  const trappedSet = new Set<string>();
+  startKeys.forEach((k, i) => {
+    const home = closure([k], (n) => back.get(n) ?? []);
+    for (const n of reachFrom[i]!) if (!home.has(n)) trappedSet.add(n);
+  });
+  const trapped = [...forward].filter((k) => trappedSet.has(k));
+  return { nodes, forward, component, trapped, startKeys, reachFrom, limited, maxRise };
 }
 
 /** Height a free jump with `vel` gains, measured by simulating it. */
@@ -138,17 +171,24 @@ export interface PlatformRun {
 
 /**
  * Standing runs (2+ adjacent tile tops with two empty rows above) in open space that no node of `reached` stands
- * on. "Open space" = covered by a 2x2 empty block reachable from the spawn blocks through 2x2 blocks, so slits and
- * sealed pockets do not count. Unreached tiles are grouped into runs per row, top to bottom.
+ * on. "Open space" = covered by a 2x2 empty block connected, through 2x2 blocks, to a block the body of some
+ * reached standing position occupies, so slits and sealed pockets no player can enter do not count. Unreached
+ * tiles are grouped into runs per row, top to bottom.
  */
-export function unreachedRuns(lv: LevelData, reached: Iterable<{ x: number; y: number }>, spawns: readonly { col: number; row: number }[]): PlatformRun[] {
+export function unreachedRuns(lv: LevelData, reached: Iterable<{ x: number; y: number }>): PlatformRun[] {
   const fat = (x: number, y: number): boolean =>
     x >= 0 && x + 1 < GRID_W && y >= 0 && y + 1 < GRID_H && !isSolid(lv, x, y) && !isSolid(lv, x + 1, y) && !isSolid(lv, x, y + 1) && !isSolid(lv, x + 1, y + 1);
+  const spots = [...reached];
   const seen = new Set<string>();
   const open = new Set<string>();
   const stack: [number, number][] = [];
-  for (const s of spawns) {
-    for (let dy = -2; dy <= 0; dy++) for (let dx = -1; dx <= 0; dx++) stack.push([s.col + dx, s.row + dy]);
+  const half = PLAYER_SIZE / 2;
+  for (const p of spots) {
+    for (let cy = Math.floor((p.y - half) / TILE); cy <= Math.floor((p.y + half - 0.001) / TILE); cy++) {
+      for (let cx = Math.floor((p.x - half) / TILE); cx <= Math.floor((p.x + half - 0.001) / TILE); cx++) {
+        stack.push([cx - 1, cy - 1], [cx, cy - 1], [cx - 1, cy], [cx, cy]);
+      }
+    }
   }
   while (stack.length > 0) {
     const [x, y] = stack.pop()!;
@@ -158,7 +198,6 @@ export function unreachedRuns(lv: LevelData, reached: Iterable<{ x: number; y: n
     stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
   }
   const standable = (tx: number, ty: number): boolean => isSolid(lv, tx, ty) && open.has(`${tx},${ty - 1}`) && open.has(`${tx},${ty - 2}`);
-  const spots = [...reached];
   const runs: PlatformRun[] = [];
   for (let ty = 2; ty < GRID_H; ty++) {
     const standY = ty * TILE - PLAYER_SIZE / 2;

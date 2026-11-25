@@ -14,12 +14,13 @@ export interface CliIO {
   defaultLevelsPath?: string;
 }
 
-const USAGE = `usage: check-levels [--file <levels.json>] [--range A-B] [--json] [--strict] [--no-reach]
+const USAGE = `usage: check-levels [--file <levels.json>] [--range A-B] [--json] [--strict] [--no-reach] [--max-nodes N]
   --file     levels JSON (array of LevelData); default shared/src/levels/levels.json, else the built-in LEVELS
   --range    only lint rounds A..B (the ramp checks still see every level)
   --json     machine-readable output
   --strict   warnings fail the run too
-  --no-reach skip the (slow) standing/trap analysis
+  --no-reach skip the (slow) standing/trap analysis (the real gate runs it)
+  --max-nodes N  cap on standing positions per level (default 20000); past it the level fails with reach-limit
 exit codes: 0 clean, 1 lint errors (or warnings with --strict), 2 usage or file problems`;
 
 const MAX_BYTES = 64 * 1024 * 1024;
@@ -55,6 +56,7 @@ export function run(argv: string[], io: CliIO): number {
   let json = false;
   let strict = false;
   let reach = true;
+  let maxNodes: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--json") json = true;
@@ -73,6 +75,13 @@ export function run(argv: string[], io: CliIO): number {
         return 2;
       }
       range = [Number(m[1]), Number(m[2])];
+    } else if (a === "--max-nodes") {
+      const n = /^\d+$/.test(argv[i + 1] ?? "") ? Number(argv[++i]) : 0;
+      if (n < 1) {
+        io.stderr(`--max-nodes needs a positive integer\n${USAGE}\n`);
+        return 2;
+      }
+      maxNodes = n;
     } else if (a === "--help" || a === "-h") {
       io.stdout(`${USAGE}\n`);
       return 0;
@@ -125,7 +134,7 @@ export function run(argv: string[], io: CliIO): number {
     const round = roundOf(lv, i);
     if (!inRange(round)) return;
     try {
-      const rep = lintReport(lv as LevelData, { kind: round === 100 ? "boss" : "normal", reach });
+      const rep = lintReport(lv as LevelData, { kind: round === 100 ? "boss" : "normal", reach, ...(maxNodes !== undefined ? { maxNodes } : {}) });
       results.push({ round, enemies: rep.stats.enemyCount, nodes: rep.stats.standingNodes, status: statusOf(rep.issues), issues: rep.issues });
     } catch (e) {
       const issues: LintIssue[] = [{ severity: "error", code: "internal", message: `lint crashed: ${e instanceof Error ? e.message : String(e)}` }];
