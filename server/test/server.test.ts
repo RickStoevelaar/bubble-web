@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerMsg } from "@bubble/shared";
@@ -141,5 +142,32 @@ describe("websocket integration", () => {
 
   it("refuses upgrades on other paths", async () => {
     await expect(open("/other")).rejects.toBeDefined();
+  });
+
+  const rawSend = (payload: string) =>
+    new Promise<string>((resolve) => {
+      const sock = net.connect(srv.port, "127.0.0.1", () => sock.write(payload));
+      let got = "";
+      sock.on("data", (d) => (got += d));
+      sock.on("error", () => resolve(got));
+      sock.on("close", () => resolve(got));
+      setTimeout(() => sock.destroy(), 300);
+    });
+  const upgrade = (target: string) =>
+    `GET ${target} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+    `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`;
+
+  it("survives a malformed absolute-form upgrade target and still serves joins", async () => {
+    await rawSend(upgrade("http://[/ws"));
+    await rawSend(upgrade("http://[/other"));
+    await rawSend("GET http://[/ HTTP/1.1\r\nHost: x\r\n\r\n");
+    await rawSend("GET http://example.com/healthz HTTP/1.1\r\nHost: x\r\n\r\n");
+    await rawSend("GARBAGE\r\n\r\n");
+    expect((await raw("/healthz")).status).toBe(200);
+    const { ws, msgs } = await open();
+    ws.send(JSON.stringify({ t: "join", room: "after", pin: PIN, name: "Zed" }));
+    await until(() => msgs.some((m) => m.t === "snap"));
+    ws.close();
+    await until(() => ws.readyState === WebSocket.CLOSED);
   });
 });

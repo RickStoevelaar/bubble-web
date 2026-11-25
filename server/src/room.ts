@@ -52,32 +52,62 @@ const SNAPSHOT_EVERY = TICK_RATE / SNAPSHOT_RATE;
 const PUMP_MS = 8;
 const MAX_CATCHUP_TICKS = 10;
 
-/** Rolling-window counter of failed PIN attempts per IP. */
+export const MAX_TRACKED_IPS = 4096;
+
+/**
+ * Rate-limit key: IPv6 addresses collapse to their /64 prefix (a client
+ * typically owns a whole /64); IPv4, IPv4-mapped IPv6 and anything unparsable
+ * are returned unchanged.
+ */
+export function limiterKey(ip: string): string {
+  if (!ip.includes(":") || /^::ffff:/i.test(ip)) return ip;
+  const addr = ip.split("%")[0]!;
+  const halves = addr.split("::");
+  if (halves.length > 2) return ip;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if ((halves.length === 1 ? missing !== 0 : missing < 1)) return ip;
+  const groups = [...head, ...Array<string>(halves.length === 2 ? missing : 0).fill("0"), ...tail];
+  const nums = groups.slice(0, 4).map((g) => (/^[0-9a-f]{1,4}$/i.test(g) ? parseInt(g, 16) : NaN));
+  if (nums.some(Number.isNaN)) return ip;
+  return nums.map((n) => n.toString(16)).join(":");
+}
+
+/** Rolling-window counter of failed PIN attempts per client key, bounded in size. */
 export class RateLimiter {
   private fails = new Map<string, number[]>();
   constructor(
     private now: () => number,
     private max = PIN_FAIL_LIMIT,
     private windowMs = PIN_WINDOW_MS,
+    private maxTracked = MAX_TRACKED_IPS,
   ) {}
 
-  private recent(ip: string): number[] {
+  get size(): number {
+    return this.fails.size;
+  }
+
+  private recent(key: string): number[] {
     const cutoff = this.now() - this.windowMs;
-    const list = (this.fails.get(ip) ?? []).filter((t) => t > cutoff);
-    if (list.length) this.fails.set(ip, list);
-    else this.fails.delete(ip);
+    const list = (this.fails.get(key) ?? []).filter((t) => t > cutoff);
+    if (list.length) this.fails.set(key, list);
+    else this.fails.delete(key);
     return list;
   }
 
   isBlocked(ip: string): boolean {
-    return this.recent(ip).length > this.max;
+    return this.recent(limiterKey(ip)).length > this.max;
   }
 
   fail(ip: string): void {
-    if (this.fails.size > 1000) for (const k of [...this.fails.keys()]) this.recent(k);
-    const list = this.recent(ip);
+    const key = limiterKey(ip);
+    const list = this.recent(key);
     if (list.length <= this.max) list.push(this.now());
-    this.fails.set(ip, list);
+    this.fails.delete(key); // re-insert so Map order is least-recently-failed first
+    this.fails.set(key, list);
+    // Hard cap: evict the oldest entries (O(1) each, no scan).
+    while (this.fails.size > this.maxTracked) this.fails.delete(this.fails.keys().next().value as string);
   }
 }
 
