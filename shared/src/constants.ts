@@ -28,6 +28,19 @@ export const TUNING = {
   bubbleLaunchTicks: 10,
   bubbleRise: 0.25,
   bubbleLifeTicks: 360,
+  bubbleRadius: 7,
+  /** Distance from the player center to a freshly blown bubble center. */
+  bubbleSpawnOffset: 14,
+  fastBubbleMult: 1.5,
+  longBubbleMult: 1.5,
+  /** Player vy after bouncing on a bubble. */
+  bubbleBounceVel: -4.0,
+  /** Drift cell dx/dy are multiplied by this and added to bubble velocity each tick. */
+  bubbleDriftStrength: 0.05,
+  /** Per-tick damping of float-phase velocity back toward the base rise. */
+  bubbleDamping: 0.9,
+  /** Fraction of overlap resolved per tick when bubbles stack. */
+  bubbleStackPush: 0.5,
   bubbleEscapeTicks: 60,
   angerSpeedMult: 1.5,
   invulnTicks: 120,

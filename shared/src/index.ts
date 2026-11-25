@@ -5,3 +5,4 @@ export * from "./levels/test-level";
 export * from "./types";
 export * from "./sim/player";
 export * from "./sim/sim";
+export * from "./sim/bubbles";

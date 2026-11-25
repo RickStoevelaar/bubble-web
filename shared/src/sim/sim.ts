@@ -3,6 +3,7 @@ import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import { Rng } from "../rng";
 import type { GameState, PlayerState, SimEvent } from "../types";
+import { stepBubbles } from "./bubbles";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 
 const P1_SPAWN_COL = 3;
@@ -65,6 +66,7 @@ export class Sim {
       items: [],
       roundTicks: 0,
       hurryActive: false,
+      nextId: 1,
     };
     this.loadRound(1);
   }
@@ -110,6 +112,7 @@ export class Sim {
     for (const p of this.state.players) {
       events.push(...stepPlayer(this, p, buttons[p.id]));
     }
+    events.push(...stepBubbles(this, buttons));
     return events;
   }
 }

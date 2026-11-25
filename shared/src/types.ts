@@ -1,12 +1,24 @@
+import type { EnemyType } from "./level";
+
 export const BTN = { L: 1, R: 2, J: 4, F: 8 } as const;
 
 /** Placeholder; extended by the enemy task. */
 export interface EnemyState {
   id: number;
 }
-/** Placeholder; extended by the bubble task. */
 export interface BubbleState {
   id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  kind: "normal" | "water" | "fire" | "lightning" | "letter";
+  /** Index into E X T E N D; only for kind "letter". */
+  letter?: 0 | 1 | 2 | 3 | 4 | 5;
+  phase: "launch" | "float";
+  ageTicks: number;
+  trapped?: { type: EnemyType; escapeIn: number };
+  owner: 0 | 1;
 }
 /** Placeholder; extended by the items task. */
 export interface ItemState {
@@ -43,6 +55,8 @@ export interface GameState {
   items: ItemState[];
   roundTicks: number;
   hurryActive: boolean;
+  /** Next unique entity id (monotonic, survives restore). */
+  nextId: number;
 }
 
 export type SimEvent = {
