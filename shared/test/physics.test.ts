@@ -566,4 +566,37 @@ describe("differential: new moveBody vs the old algorithm and an independent ora
     console.log("mutation (7afd035 criterion) oracle mismatches", bad);
     expect(bad).toBeGreaterThan(100);
   });
+
+  it("dense far-out samples (|x|,|y| up to 1e4, above and below the field, off the grid sideways): vertical physics equals the old unbounded scans, walls equal the oracle", () => {
+    const r2 = new Rng(99);
+    const lvs = [TEST_LEVEL, PILLAR_LEFT, levels[5]!];
+    let n = 0;
+    let landed = 0;
+    for (let i = 0; i < 40000; i++) {
+      const lv = lvs[i % lvs.length]!;
+      const size = [12, PLAYER_SIZE, 16][r2.int(3)]!;
+      const wide = r2.int(2) === 0;
+      const s: Body = {
+        x: wide ? (r2.next() - 0.5) * 2e4 : (r2.next() - 0.2) * 320,
+        y: r2.int(2) === 0 ? (r2.next() - 0.5) * 2e4 : -40 + r2.next() * 320,
+        vx: i % 3 === 0 ? 0 : (r2.int(33) - 16) / 10,
+        vy: (r2.next() - 0.6) * 8,
+        onGround: false,
+      };
+      const a = { ...s };
+      const nw = { ...s };
+      const o = oldMove(lv, a, size);
+      const hit = moveBody(lv, nw, size);
+      const v = shouldPassWall(lv, s, size);
+      expect(hit).toBe(v.verdict === "block");
+      expect(nw.x).toBe(v.verdict === "block" ? v.flush : s.x + s.vx);
+      if (!o.clamp && nw.x === a.x) {
+        expect([nw.y, nw.vy, nw.onGround]).toEqual([a.y, a.vy, a.onGround]);
+        if (a.onGround) landed++;
+      }
+      n++;
+    }
+    console.log("dense far-out samples", n, "landings", landed);
+    expect(landed).toBeGreaterThan(1000);
+  });
 });

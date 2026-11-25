@@ -5,7 +5,7 @@ import type { Rng } from "../rng";
 import type { BubbleState, EffectState, EnemyState, GameState, PlayerState, SimEvent } from "../types";
 import { ENEMY_HALF, startDeath } from "./enemy-common";
 import { killTrapped } from "./enemies";
-import { moveBody } from "./physics";
+import { MAX_COORD, moveBody, saneBody } from "./physics";
 import { PLAYER_SIZE } from "./player";
 import { addScore, chainScore } from "./scoring";
 
@@ -99,9 +99,10 @@ export function repairEffects(raw: unknown): EffectState[] {
     if (!Number.isFinite(r.id) || !Number.isFinite(r.x) || !Number.isFinite(r.y)) continue;
     const dir = (r.dir as number) < 0 ? -1 : 1;
     const [l, rr] = initialReach(r.kind!, r.x!, dir);
-    const e = makeEffect(r.id!, r.kind!, r.owner === 1 ? 1 : 0, r.x!, r.y!, dir, Math.max(0, num(r.reachL, l)), Math.max(0, num(r.reachR, rr)));
+    const e = makeEffect(r.id!, r.kind!, r.owner === 1 ? 1 : 0, r.x!, r.y!, dir, Math.min(MAX_COORD, Math.max(0, num(r.reachL, l))), Math.min(MAX_COORD, Math.max(0, num(r.reachR, rr))));
     e.vx = num(r.vx, 0);
     e.vy = num(r.vy, 0);
+    saneBody(e);
     e.ageTicks = count(r.ageTicks);
     e.onGround = r.onGround === true;
     e.kills = count(r.kills);

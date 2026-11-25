@@ -9,6 +9,7 @@ import { stepEnemies } from "./enemies";
 import { repairItems, stepItems } from "./items";
 import { maybeSpawnItem, resolvePendingRound } from "./powers";
 import { addScore, nextLifeThreshold } from "./scoring";
+import { saneBody } from "./physics";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
 import { P1_SPAWN_COL, P2_SPAWN_COL, spawnFloorRow } from "./spawn";
@@ -168,6 +169,10 @@ export class Sim {
     for (const p of sim.state.players as Partial<PlayerState>[]) {
       if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
       repairPlayer(p);
+    }
+    // A damaged save may carry absurd finite coordinates or speeds: clamp every entity into a sane range.
+    for (const list of [sim.state.players, sim.state.enemies, sim.state.bubbles, sim.state.projectiles, sim.state.items, sim.state.effects]) {
+      for (const o of list) saneBody(o);
     }
     // Older saves have no rngState; keep the tick-seeded stream from the constructor.
     if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);

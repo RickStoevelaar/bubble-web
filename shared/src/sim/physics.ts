@@ -4,6 +4,30 @@ import type { LevelData } from "../level";
 
 const EPS = 0.001;
 
+/**
+ * Every tile scan below clamps its row/column range to +-SCAN_TILES (|coordinate| up to 32768 px), so moveBody
+ * terminates for ANY input: past 2^53 an index loop `i++` no longer advances. Tile solidity is uniform outside the
+ * grid (columns solid, rows open), so the clamp changes nothing for bodies within |x|,|y| <= 1e4 (+-1250 tiles).
+ * Absurd positions give a deterministic result (NaN propagates and scans nothing); positions are never rewritten
+ * here except by the normal landing snap. Saved states are additionally sanitized by saneBody (see below).
+ */
+const SCAN_TILES = 4096;
+const scan = (i: number): number => Math.min(Math.max(i, -SCAN_TILES), SCAN_TILES);
+
+/** Largest |x|, |y| and |vx|, |vy| a restored body may keep: far outside any field, far above any real speed. */
+export const MAX_COORD = 4096;
+export const MAX_SPEED = 64;
+const sane = (v: unknown, lim: number): number => (typeof v === "number" && v === v ? Math.min(Math.max(v, -lim), lim) : 0);
+
+/** Clamps a (possibly damaged) restored entity's position and velocity into MAX_COORD / MAX_SPEED; NaN becomes 0. */
+export function saneBody(o: { x?: unknown; y?: unknown; vx?: unknown; vy?: unknown }): void {
+  const r = o as Record<string, unknown>;
+  if ("x" in r) r.x = sane(r.x, MAX_COORD);
+  if ("y" in r) r.y = sane(r.y, MAX_COORD);
+  if ("vx" in r) r.vx = sane(r.vx, MAX_SPEED);
+  if ("vy" in r) r.vy = sane(r.vy, MAX_SPEED);
+}
+
 /** Anything with a square body centered on (x, y) that obeys platformer gravity. */
 export interface Body {
   x: number;
@@ -24,8 +48,8 @@ function isWall(lv: LevelData, tx: number, ty: number): boolean {
 }
 
 function wallInColumn(lv: LevelData, tx: number, top: number, bottom: number): boolean {
-  const r0 = Math.floor(top / TILE);
-  const r1 = Math.floor((bottom - EPS) / TILE);
+  const r0 = scan(Math.floor(top / TILE));
+  const r1 = scan(Math.floor((bottom - EPS) / TILE));
   for (let ty = r0; ty <= r1; ty++) if (isWall(lv, tx, ty)) return true;
   return false;
 }
@@ -55,8 +79,8 @@ function wallRun(lv: LevelData, tx: number, ty: number): [number, number] {
  */
 function blocks(lv: LevelData, tx: number, edgeCol: number, top: number, bottom: number): boolean {
   if (tx < BORDER_COLS || tx >= GRID_W - BORDER_COLS) return wallInColumn(lv, tx, top, bottom);
-  const r1 = Math.floor((bottom - EPS) / TILE);
-  for (let ty = Math.floor(top / TILE); ty <= r1; ty++) {
+  const r1 = scan(Math.floor((bottom - EPS) / TILE));
+  for (let ty = scan(Math.floor(top / TILE)); ty <= r1; ty++) {
     if (!isWall(lv, tx, ty)) continue;
     if (!isWall(lv, edgeCol, ty)) return true;
     const [t, u] = wallRun(lv, tx, ty);
@@ -102,10 +126,10 @@ export function moveBody(lv: LevelData, b: Body, size: number): boolean {
 
   // One-way platforms: land only while falling, from above the tile top.
   if (b.vy >= 0) {
-    const c0 = Math.floor((b.x - HALF) / TILE);
-    const c1 = Math.floor((b.x + HALF - EPS) / TILE);
-    const r0 = Math.ceil((prevBottom - EPS) / TILE);
-    const r1 = Math.floor((ny + HALF) / TILE);
+    const c0 = scan(Math.floor((b.x - HALF) / TILE));
+    const c1 = scan(Math.floor((b.x + HALF - EPS) / TILE));
+    const r0 = scan(Math.ceil((prevBottom - EPS) / TILE));
+    const r1 = scan(Math.floor((ny + HALF) / TILE));
     landing: for (let ty = r0; ty <= r1; ty++) {
       const tileTop = ty * TILE;
       for (let tx = c0; tx <= c1; tx++) {

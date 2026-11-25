@@ -1,6 +1,6 @@
 import { TUNING } from "../constants";
 import type { EnemyState, GameState, ItemState, SimEvent } from "../types";
-import { moveBody } from "./physics";
+import { moveBody, saneBody } from "./physics";
 import { PLAYER_SIZE } from "./player";
 import { applyPower, isPowerId, type PowerSim } from "./powers";
 import { FOOD_BY_ENEMY, addScore } from "./scoring";
@@ -84,6 +84,7 @@ export function repairItems(raw: unknown): ItemState[] {
       value: Math.max(0, num(r.value, 100)),
       despawnTicks: Math.max(1, num(r.despawnTicks, TUNING.foodTtlTicks)),
     };
+    saneBody(item);
     out.push(item);
   }
   return out;
