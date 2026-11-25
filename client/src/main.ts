@@ -1,4 +1,16 @@
 import { FIELD_H, FIELD_W, GAME_LEVELS } from "@bubble/shared";
+import {
+  applyPlacement,
+  createAudio,
+  createMuteButton,
+  installMuteKey,
+  installUnlock,
+  muteButtonPlacement,
+  musicFor,
+  newMapperState,
+  sfxForEvent,
+  type TrackName,
+} from "./audio";
 import { ClientGame } from "./game";
 import { GamepadInput } from "./input/gamepad";
 import { CombinedInput, KeyboardInput } from "./input/input";
@@ -54,6 +66,21 @@ function boot(): void {
 
   const overlay = el<HTMLElement>("join");
 
+  // Audio: one system for the page. Unlocked by the first gesture (iOS needs resume() inside it), muted by the
+  // corner button or M, suspended while the page is hidden.
+  const audio = createAudio();
+  installUnlock(window, audio);
+  const muteBtn = createMuteButton(document, audio);
+  installMuteKey(window, document, audio, () => muteBtn.refresh());
+  document.addEventListener("visibilitychange", () => (document.hidden ? audio.suspend() : audio.resume()));
+  window.addEventListener("pagehide", () => audio.suspend());
+  window.addEventListener("pageshow", () => {
+    if (!document.hidden) audio.resume();
+  });
+  let track: TrackName | null = null;
+  let lastPhase: string | null = null;
+  const mapperState = newMapperState();
+
   // Touch: the tracker/deck exist from boot so every layout recompute can re-zone them, but touches
   // are only handled once the join overlay is gone (the form must keep working).
   const deckModel = new TouchDeck(null);
@@ -88,6 +115,7 @@ function boot(): void {
     touch.setZones(zones); // releases held touches if the zones moved under them (rotation)
     const box = zones ? (l.mode === "portrait" ? l.deckRect : { x: 0, y: 0, width: w, height: h }) : null;
     deckView.setLayout(box, dpr, l.mode !== "portrait");
+    applyPlacement(muteBtn.el, muteButtonPlacement(l, w));
   };
   /** Zoom or a move to another monitor changes devicePixelRatio without a resize event. */
   const watchDpr = (): void => {
@@ -170,6 +198,15 @@ function boot(): void {
       sampler.frame(now);
       deckView.render(touch.pressed);
       const view = game?.viewState(now);
+      const want = musicFor(view ?? null, track);
+      if (want !== track) {
+        track = want;
+        audio.setMusic(want);
+      }
+      if (view) {
+        if (view.phase === "gameover" && lastPhase !== "gameover") audio.playSfx("gameover");
+        lastPhase = view.phase;
+      }
       if (game && view) render(ctx, sheet, view, GAME_LEVELS, game.localPlayer);
       requestAnimationFrame(frame);
     };
@@ -187,6 +224,15 @@ function boot(): void {
     p.then(({ playerId }) => {
       saveForm({ room, pin: pinInput.value, name });
       game = new ClientGame({ levels: GAME_LEVELS, playerId });
+      const local = playerId;
+      game.onEvents((events) => {
+        const now = performance.now();
+        for (const e of events) {
+          const name = sfxForEvent(e, { localPlayer: local, now, state: mapperState });
+          if (name) audio.playSfx(name);
+        }
+      });
+      audio.playSfx("join");
       startLoop();
     }).catch((err: unknown) => {
       lastError = err instanceof NetError ? err.code : "closed";
