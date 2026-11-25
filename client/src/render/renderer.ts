@@ -18,6 +18,7 @@ import {
   ITEM_NAMES,
   THEME_BG,
   drawEx,
+  hasSprite,
   type DrawOptions,
   type Layer,
   type FontName,
@@ -65,7 +66,8 @@ interface LooseItem {
 const TREASURE_ITEMS: readonly ItemName[] = ["item_gem", "item_crown", "item_star"];
 const FOOD_ITEMS: readonly ItemName[] = ["item_plum", "item_cake", "item_fish", "item_pear"];
 
-function itemSprite(it: LooseItem): ItemName {
+/** Null for an item kind this client does not know (version skew): the item is skipped. */
+function itemSprite(it: LooseItem): ItemName | null {
   switch (it.kind) {
     case "power":
       return "item_potion";
@@ -73,8 +75,10 @@ function itemSprite(it: LooseItem): ItemName {
       return TREASURE_ITEMS[Math.abs(it.id) % TREASURE_ITEMS.length]!;
     case "food":
       return FOOD_ITEMS[Math.abs(it.id) % FOOD_ITEMS.length]!;
-    default:
+    case undefined:
       return ITEM_NAMES[Math.abs(it.id) % ITEM_NAMES.length]!;
+    default:
+      return null;
   }
 }
 
@@ -85,11 +89,12 @@ for (const type of ENEMY_TYPES) {
   ENEMY_ANGRY.set(type, `enemy_${type}_angry` as SpriteName);
 }
 
-function enemySprite(type: EnemyState["type"], angry: boolean): SpriteName {
-  return (angry ? ENEMY_ANGRY : ENEMY_NORMAL).get(type)!;
+/** Undefined for an enemy type this client does not know. */
+function enemySprite(type: EnemyState["type"], angry: boolean): SpriteName | undefined {
+  return (angry ? ENEMY_ANGRY : ENEMY_NORMAL).get(type);
 }
 
-const BUBBLE_NAMES: Record<BubbleState["kind"], SpriteName> = {
+const BUBBLE_NAMES: Partial<Record<BubbleState["kind"], SpriteName>> = {
   normal: "bubble_normal",
   water: "bubble_water",
   fire: "bubble_fire",
@@ -110,6 +115,7 @@ function playerById(players: PlayerState[], id: number): PlayerState | undefined
 
 function drawEnemy(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, e: EnemyState, walkFrame: number): void {
   const name = enemySprite(e.type, e.angry);
+  if (name === undefined || !hasSprite(name, walkFrame)) return;
   if (e.state === "dead") {
     drawEx(ctx, sheet, name, walkFrame, e.x, e.y, { rotate: (e.deadTicks ?? 0) * 0.5, flipX: e.dir === -1 });
   } else if (e.state === "spawning") {
@@ -127,16 +133,20 @@ function drawBubble(
   roundTicks: number,
 ): void {
   if (b.kind === "letter") {
-    drawEx(ctx, sheet, "bubble_letter", b.letter ?? 0, b.x, b.y);
+    const letter = b.letter ?? 0;
+    if (hasSprite("bubble_letter", letter)) drawEx(ctx, sheet, "bubble_letter", letter, b.x, b.y);
     return;
   }
   const frame = (b.ageTicks >> 4) & 1;
-  drawEx(ctx, sheet, BUBBLE_NAMES[b.kind], frame, b.x, b.y);
+  const name = BUBBLE_NAMES[b.kind];
+  if (name === undefined || !hasSprite(name, frame)) return;
+  drawEx(ctx, sheet, name, frame, b.x, b.y);
   const trapped = b.trapped;
   if (trapped) {
     const owner = enemyById(enemies, trapped.enemyId);
     const flashing = trapped.escapeIn < 60 && (roundTicks >> 2) % 2 === 0;
-    drawEx(ctx, sheet, enemySprite(trapped.type, flashing || (owner?.angry ?? false)), frame, b.x, b.y, TRAPPED_OPTS);
+    const inner = enemySprite(trapped.type, flashing || (owner?.angry ?? false));
+    if (inner !== undefined && hasSprite(inner, frame)) drawEx(ctx, sheet, inner, frame, b.x, b.y, TRAPPED_OPTS);
   }
 }
 
@@ -256,7 +266,9 @@ export function render(
   ctx.drawImage(bg.canvas, 0, 0, FIELD_W, FIELD_H, 0, 0, FIELD_W, FIELD_H);
 
   for (const it of state.items as LooseItem[]) {
-    if (Number.isFinite(it.x) && Number.isFinite(it.y)) drawEx(ctx, sheet, itemSprite(it), 0, it.x!, it.y!);
+    if (!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
+    const name = itemSprite(it);
+    if (name !== null) drawEx(ctx, sheet, name, 0, it.x!, it.y!);
   }
 
   for (const e of state.enemies) {

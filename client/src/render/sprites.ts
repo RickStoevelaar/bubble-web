@@ -25,6 +25,13 @@ function defOf(name: SpriteName): SpriteDef {
   return d;
 }
 
+/** Non-throwing lookup: true only if `name` is a known template with a frame `frame`. */
+export function hasSprite(name: string, frame: number): boolean {
+  if (!Object.prototype.hasOwnProperty.call(SPRITE_DEFS, name)) return false;
+  const def = SPRITE_DEFS[name as SpriteName];
+  return def !== undefined && Number.isInteger(frame) && frame >= 0 && frame < def.frames.length;
+}
+
 export const ALL_SPRITE_NAMES = Object.keys(SPRITE_DEFS) as SpriteName[];
 
 export function frameCount(name: SpriteName): number {

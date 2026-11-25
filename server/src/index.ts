@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { TEST_LEVEL } from "@bubble/shared";
+import { LEVELS } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { WebSocketServer } from "ws";
 import { createFilePersist, dataDir } from "./persist";
@@ -16,7 +16,7 @@ import { HEARTBEAT_INTERVAL_MS, startHeartbeat, wrapSocket } from "./wsadapter";
 
 /** Single place that supplies the level set. Task 18 swaps this for the real level files. */
 export function loadLevels(): LevelData[] {
-  return [TEST_LEVEL];
+  return LEVELS;
 }
 
 export interface ServerConfig {
