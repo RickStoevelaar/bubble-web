@@ -50,6 +50,7 @@ export function stepRound(sim: RoundSim): SimEvent[] {
       state.phase = "clearing";
       state.phaseTicks = 0;
       state.enemies = state.enemies.filter((e) => e.type !== "hurry");
+      state.projectiles = [];
       events.push({ kind: "clear" });
     }
   } else if (state.phase === "clearing") {

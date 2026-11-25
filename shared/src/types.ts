@@ -20,6 +20,10 @@ export interface EnemyState {
   dropping?: boolean;
   /** Ticks spent in the "dead" arc. */
   deadTicks?: number;
+  /** Shooters only: ticks until the next wind-up starts (unset until first active tick, then randomized). */
+  cooldown?: number;
+  /** Shooters only: ticks of wind-up left (stopped and facing the target); 0/unset when not winding up. */
+  windup?: number;
 }
 export interface BubbleState {
   id: number;
@@ -34,6 +38,16 @@ export interface BubbleState {
   ageTicks: number;
   trapped?: { type: EnemyType; escapeIn: number; enemyId: number };
   owner: 0 | 1;
+}
+/** A rock (arcs under gravity) or flame (straight, limited range) shot by an enemy; (x, y) is its center. */
+export interface ProjectileState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  kind: "rock" | "flame";
+  ageTicks: number;
 }
 /** Placeholder; extended by the items task. */
 export interface ItemState {
@@ -70,6 +84,7 @@ export interface GameState {
   enemies: EnemyState[];
   bubbles: BubbleState[];
   items: ItemState[];
+  projectiles: ProjectileState[];
   roundTicks: number;
   hurryActive: boolean;
   /** True once a real (non-hurry) enemy has been alive this round; guards round-clear. */

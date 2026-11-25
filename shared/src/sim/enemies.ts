@@ -1,86 +1,24 @@
-import { FIELD_H, FIELD_W, TILE, TUNING } from "../constants";
-import { isSolid } from "../level";
-import type { LevelData } from "../level";
-import type { Rng } from "../rng";
-import type { BubbleState, EnemyState, GameState, PlayerState, SimEvent } from "../types";
+import { TUNING } from "../constants";
+import type { BubbleState, EnemyState, GameState, SimEvent } from "../types";
+import { killPlayer } from "./combat";
+import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, type Behavior, type EnemySim } from "./enemy-common";
+import { bouncer, flyer } from "./movers";
 import { moveBody } from "./physics";
 import { PLAYER_SIZE } from "./player";
+import { stepProjectiles } from "./projectiles";
+import { breather, resetShooterTimers, thrower } from "./shooters";
+import { chaser, hurryChaser, walker } from "./walker";
 
-const SIZE = TUNING.enemySize;
-const HALF = SIZE / 2;
+export type { EnemySim } from "./enemy-common";
 
-export interface EnemySim {
-  currentLevel: LevelData;
-  state: GameState;
-  rng: Rng;
-}
-
-type Behavior = (sim: EnemySim, e: EnemyState) => void;
-
-function enemySpeed(e: EnemyState): number {
-  return TUNING.enemyWalkSpeed * (e.angry ? TUNING.angerSpeedMult : 1);
-}
-
-/** Walks in `dir`, turns at walls, rolls drop-or-turn at ledges, hops toward players above. */
-function walker(sim: EnemySim, e: EnemyState): void {
-  const lv = sim.currentLevel;
-  if (e.onGround) {
-    const target = sim.state.players.find(
-      (p) =>
-        p.state === "alive" &&
-        p.onGround &&
-        e.y - p.y >= TUNING.enemyHopMinRise &&
-        e.y - p.y <= TUNING.enemyHopMaxRise &&
-        Math.abs(p.x - e.x) < TUNING.enemyHopReach,
-    );
-    if (target && sim.rng.next() < TUNING.enemyHopChance) {
-      e.vy = TUNING.jumpVel;
-      e.onGround = false;
-      e.dir = target.x >= e.x ? 1 : -1;
-    } else if (!e.dropping) {
-      const footRow = Math.floor((e.y + HALF + 1) / TILE);
-      const aheadCol = Math.floor((e.x + e.dir * (TILE / 2)) / TILE);
-      if (!isSolid(lv, aheadCol, footRow)) {
-        if (sim.rng.next() < TUNING.enemyLedgeDropChance) e.dropping = true;
-        else e.dir = e.dir === 1 ? -1 : 1;
-      }
-    }
-  }
-  e.vx = e.dir * enemySpeed(e);
-  if (moveBody(lv, e, SIZE)) e.dir = e.dir === 1 ? -1 : 1;
-  if (!e.onGround) e.dropping = false;
-}
-
-/** Hurry-up ghost: pursues the nearest alive player along one axis per tick, through tiles, inside the field. */
-function hurryChaser(sim: EnemySim, e: EnemyState): void {
-  let target: PlayerState | undefined;
-  let best = Infinity;
-  for (const p of sim.state.players) {
-    if (p.state !== "alive") continue;
-    const d = Math.abs(p.x - e.x) + Math.abs(p.y - e.y);
-    if (d < best) {
-      best = d;
-      target = p;
-    }
-  }
-  if (!target) return;
-  const dx = target.x - e.x;
-  const dy = target.y - e.y;
-  const s = TUNING.hurryChaserSpeed;
-  if (Math.abs(dx) >= Math.abs(dy)) e.x += Math.min(Math.abs(dx), s) * Math.sign(dx);
-  else e.y += Math.min(Math.abs(dy), s) * Math.sign(dy);
-  e.x = Math.min(FIELD_W - HALF, Math.max(HALF, e.x));
-  e.y = Math.min(FIELD_H - HALF, Math.max(HALF, e.y));
-}
-
-/** Per-type behavior table. Only the walker exists so far; later tasks fill in the rest. */
+/** Per-type behavior table. `boss` stays a walker until its own task. */
 export const ENEMY_BEHAVIORS: Record<EnemyState["type"], Behavior> = {
   walker,
-  chaser: walker,
-  thrower: walker,
-  breather: walker,
-  bouncer: walker,
-  flyer: walker,
+  chaser,
+  thrower,
+  breather,
+  bouncer,
+  flyer,
   boss: walker,
   hurry: hurryChaser,
 };
@@ -100,6 +38,7 @@ export function trapEnemy(b: BubbleState, e: EnemyState): void {
   e.state = "trapped";
   e.vx = 0;
   e.vy = 0;
+  resetShooterTimers(e);
   b.trapped = { type: e.type, escapeIn: TUNING.bubbleEscapeTicks, enemyId: e.id };
 }
 
@@ -115,6 +54,7 @@ export function releaseTrapped(state: GameState, b: BubbleState): void {
   e.vy = 0;
   e.onGround = false;
   e.dropping = false;
+  resetShooterTimers(e);
 }
 
 /** A player popped the bubble: the enemy dies (arcs away) and the player scores. */
@@ -130,15 +70,6 @@ export function killTrapped(state: GameState, b: BubbleState, playerId: 0 | 1): 
   e.deadTicks = 0;
   const p = state.players[playerId];
   if (p) p.score += TUNING.enemyPopScore;
-}
-
-function killPlayer(p: PlayerState, events: SimEvent[]): void {
-  p.state = "dying";
-  p.stateTicks = TUNING.playerDyingTicks;
-  p.lives--;
-  p.vx = 0;
-  p.vy = 0;
-  events.push({ kind: "die", player: p.id, x: p.x, y: p.y });
 }
 
 /** Advances every enemy one tick, applies anger rules and enemy-player contact. */
@@ -163,6 +94,7 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
         } else {
           e.state = "active";
           e.angry = true;
+          resetShooterTimers(e);
         }
         break;
       }
@@ -191,5 +123,6 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
       }
     }
   }
+  events.push(...stepProjectiles(sim));
   return events;
 }

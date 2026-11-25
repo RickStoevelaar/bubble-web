@@ -73,4 +73,46 @@ export const TUNING = {
   enemyDeathMaxTicks: 120,
   /** Ticks a player spends in the dying state before respawning (or being gone). */
   playerDyingTicks: 60,
+
+  /** Chaser walk speed as a multiple of the walker's. */
+  chaserSpeedMult: 1.2,
+  /** A chaser re-aims at its target only every N ticks (staggered by id) to avoid jitter. */
+  chaserRetargetTicks: 20,
+  /** Vertical distance (px) within which a player counts as being on the chaser's platform row. */
+  chaserRowBand: 12,
+  /** Horizontal distance (px) below which a chaser keeps its current direction. */
+  chaserDeadZone: 2,
+
+  /** Thrower: ticks between throws, and the randomized delay (uniform in [min, max)) before the first. */
+  throwerCooldownTicks: 150,
+  throwerInitialDelayMin: 40,
+  throwerInitialDelayMax: 120,
+  /** Thrower stands still this long, facing its target, before the rock leaves. */
+  throwWindupTicks: 30,
+  /** Rock horizontal speed (toward the target's side), launch vy (negative = up), gravity and fall cap. */
+  rockSpeedX: 1.2,
+  rockLaunchVy: -2.4,
+  rockGravity: 0.12,
+  rockMaxFall: 3.2,
+
+  /** Breather: walk speed as a multiple of the walker's, shorter cooldown and wind-up than the thrower. */
+  breatherSpeedMult: 0.7,
+  breatherCooldownTicks: 90,
+  breatherInitialDelayMin: 20,
+  breatherInitialDelayMax: 70,
+  breatherWindupTicks: 18,
+  /** Flame horizontal speed, lifetime in ticks (range = speed * ticks) and the vertical reach (px) for a target row. */
+  flameSpeed: 1.5,
+  flameRangeTicks: 40,
+  flameRowBand: 40,
+  /** Side length (px) of a projectile's square hitbox. */
+  projectileSize: 6,
+
+  /** Bouncer speed per axis (px per tick). */
+  bouncerSpeed: 0.8,
+  /** Flyer speed (px per tick), bob amplitude (px), bob period (ticks, multiple of 4) and per-id phase offset (ticks). */
+  flyerSpeed: 0.6,
+  flyerBobAmplitude: 6,
+  flyerBobPeriod: 64,
+  flyerBobIdStride: 11,
 } as const;

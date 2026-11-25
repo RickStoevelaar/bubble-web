@@ -40,9 +40,10 @@ export type BubbleName = "bubble_normal" | "bubble_water" | "bubble_fire" | "bub
 export type ItemName = (typeof ITEM_NAMES)[number];
 export type TileName = `tile_${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
 export type IconName = "icon_pip" | "icon_pop" | "icon_arrow";
+export type ProjectileName = "icon_rock" | "icon_flame";
 export type FontName = `font_${FontChar}`;
 
-export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | TileName | IconName | FontName;
+export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | TileName | IconName | ProjectileName | FontName;
 
 /** Hero frame indices. */
 export const HERO_FRAME = { walk0: 0, walk1: 1, jump: 2, fall: 3, blow: 4, death0: 5 } as const;

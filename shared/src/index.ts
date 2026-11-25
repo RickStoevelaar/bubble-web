@@ -10,3 +10,4 @@ export * from "./sim/sim";
 export * from "./sim/bubbles";
 export * from "./sim/enemies";
 export * from "./sim/physics";
+export * from "./sim/projectiles";

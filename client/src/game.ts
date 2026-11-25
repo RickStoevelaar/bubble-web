@@ -266,6 +266,8 @@ export class ClientGame {
       enemies: this.tween(from.enemies, s.enemies, t, (a, c) => a.state !== c.state),
       bubbles: this.tween(from.bubbles, s.bubbles, t),
       items: this.tweenItems(from.items, s.items, t),
+      // Older servers send no projectiles.
+      ...(s.projectiles ? { projectiles: this.tween(from.projectiles ?? [], s.projectiles, t) } : {}),
     };
   }
 

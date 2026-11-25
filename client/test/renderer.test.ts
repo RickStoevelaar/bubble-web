@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState } from "@bubble/shared";
+import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState, type ProjectileState } from "@bubble/shared";
 import { render } from "../src/render/renderer";
 import type { SpriteName, SpriteSheet } from "../src/render/sprites";
 
@@ -204,6 +204,74 @@ describe("render", () => {
     s.roundTicks = 600;
     render(b.ctx, b.sheet, s, [TEST_LEVEL], 1);
     expect(count(b.rec, (n) => n === "icon_arrow")).toBe(0);
+  });
+
+  describe("projectiles", () => {
+    const shot = (o: Partial<ProjectileState>): ProjectileState => ({
+      id: 700,
+      x: 100,
+      y: 60,
+      vx: 1,
+      vy: 0,
+      kind: "rock",
+      ageTicks: 0,
+      ...o,
+    });
+    const projectileNames = (r: Rec) => r.names.filter((n) => n.name === "icon_rock" || n.name === "icon_flame");
+
+    it("draws rocks and flames with their sprite, animation frame and position", () => {
+      const { rec, sheet, ctx } = harness();
+      const s = demoState();
+      s.enemies = [];
+      s.projectiles = [shot({ ageTicks: 0 }), shot({ id: 701, kind: "flame", x: 40, y: 90, ageTicks: 4 })];
+      render(ctx, sheet, s, [TEST_LEVEL], 0);
+      expect(projectileNames(rec)).toEqual([
+        { name: "icon_rock", frame: 0 },
+        { name: "icon_flame", frame: 1 },
+      ]);
+      // Both are 8x8 and centered on their position.
+      expect(rec.draws).toContainEqual({ dx: 96, dy: 56, dw: 8, dh: 8 });
+      expect(rec.draws).toContainEqual({ dx: 36, dy: 86, dw: 8, dh: 8 });
+    });
+
+    it("the rock tumbles: frame flips every four ticks of age", () => {
+      const frames = [0, 3, 4, 7, 8].map((age) => {
+        const { rec, sheet, ctx } = harness();
+        const s = demoState();
+        s.projectiles = [shot({ ageTicks: age })];
+        render(ctx, sheet, s, [TEST_LEVEL], 0);
+        return projectileNames(rec)[0]!.frame;
+      });
+      expect(frames).toEqual([0, 0, 1, 1, 0]);
+    });
+
+    it("draws after the enemies and before the HUD", () => {
+      const { rec, sheet, ctx } = harness();
+      const s = demoState();
+      s.enemies = [enemy({})];
+      s.projectiles = [shot({})];
+      render(ctx, sheet, s, [TEST_LEVEL], 0);
+      const names = rec.names.map((n) => n.name);
+      const rock = names.indexOf("icon_rock");
+      expect(rock).toBeGreaterThan(names.indexOf("enemy_walker"));
+      expect(rock).toBeLessThan(names.findIndex((n) => n.startsWith("font_")));
+    });
+
+    it("skips an unknown kind without throwing", () => {
+      const { rec, sheet, ctx } = harness();
+      const s = demoState();
+      s.projectiles = [shot({ kind: "laser" as never }), shot({ id: 701, kind: "toString" as never }), shot({ id: 702, kind: "flame" })];
+      expect(() => render(ctx, sheet, s, [TEST_LEVEL], 0)).not.toThrow();
+      expect(projectileNames(rec)).toEqual([{ name: "icon_flame", frame: 0 }]);
+    });
+
+    it("works with a snapshot that has no projectiles at all", () => {
+      const { rec, sheet, ctx } = harness();
+      const s = demoState() as Partial<GameState>;
+      delete s.projectiles;
+      expect(() => render(ctx, sheet, s as GameState, [TEST_LEVEL], 0)).not.toThrow();
+      expect(projectileNames(rec)).toEqual([]);
+    });
   });
 
   it("never mutates the state", () => {

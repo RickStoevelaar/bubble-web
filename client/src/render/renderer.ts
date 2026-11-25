@@ -10,6 +10,7 @@ import {
   type GameState,
   type LevelData,
   type PlayerState,
+  type ProjectileState,
 } from "@bubble/shared";
 import {
   FONT_CHARS,
@@ -150,6 +151,19 @@ function drawBubble(
   }
 }
 
+const PROJECTILE_NAMES: Record<ProjectileState["kind"], SpriteName> = {
+  rock: "icon_rock",
+  flame: "icon_flame",
+};
+
+/** Skips kinds this client does not know (version skew). Rocks tumble; flames flicker and face their travel. */
+function drawProjectile(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, p: ProjectileState): void {
+  const name = Object.prototype.hasOwnProperty.call(PROJECTILE_NAMES, p.kind) ? PROJECTILE_NAMES[p.kind] : undefined;
+  const frame = (p.ageTicks >> 2) & 1;
+  if (name === undefined || !hasSprite(name, frame)) return;
+  drawEx(ctx, sheet, name, frame, p.x, p.y, p.kind === "flame" ? { flipX: p.vx < 0 } : undefined);
+}
+
 function heroFrame(p: PlayerState, roundTicks: number): number {
   if (p.state === "dying") return HERO_FRAME.death0 + ((p.stateTicks >> 2) & 3);
   if (p.fireCooldown > TUNING.fireCooldownTicks - 10) return HERO_FRAME.blow;
@@ -282,6 +296,10 @@ export function render(
       flipX: p.facing === -1,
     });
   }
+
+  // Older servers send no projectiles.
+  const projectiles = state.projectiles;
+  if (projectiles) for (const p of projectiles) drawProjectile(ctx, sheet, p);
 
   drawHud(ctx, sheet, state, localPlayer);
 }

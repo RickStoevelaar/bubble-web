@@ -92,6 +92,7 @@ export class Sim {
       enemies: [],
       bubbles: [],
       items: [],
+      projectiles: [],
       roundTicks: 0,
       hurryActive: false,
       enemiesSeen: false,
@@ -116,6 +117,7 @@ export class Sim {
     if (typeof s.enemiesSeen !== "boolean") sim.state.enemiesSeen = false;
     if (!Number.isFinite(s.phaseTicks)) sim.state.phaseTicks = 0;
     if (typeof s.runOver !== "boolean") sim.state.runOver = false;
+    if (!Array.isArray(s.projectiles)) sim.state.projectiles = [];
     // Older saves have no rngState; keep the tick-seeded stream from the constructor.
     if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);
     else sim.state.rngState = sim.rng.getState();
@@ -124,6 +126,7 @@ export class Sim {
       for (const b of sim.state.bubbles) maxId = Math.max(maxId, b.id);
       for (const e of sim.state.enemies) maxId = Math.max(maxId, e.id);
       for (const i of sim.state.items) maxId = Math.max(maxId, i.id);
+      for (const pr of sim.state.projectiles) maxId = Math.max(maxId, pr.id);
       sim.state.nextId = maxId + 1;
     }
     return sim;
@@ -154,6 +157,7 @@ export class Sim {
     }));
     this.state.bubbles = [];
     this.state.items = [];
+    this.state.projectiles = [];
     for (const p of this.state.players) placeAtSpawn(lv, p);
   }
 
