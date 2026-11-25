@@ -48,8 +48,6 @@ export const SLIDE_EXTEND_Y = 24;
 export const BUTTON_FORGIVE = 10;
 /** A touch that STARTED on a button stays pressed while within r + this. */
 export const BUTTON_STICKY = BUTTON_FORGIVE * 2;
-/** A touch that started on the slide zone stays a slide touch within this margin around it. */
-export const SLIDE_STICKY_PAD = 48;
 export const MIN_BUTTON_RADIUS = 40;
 export const MAX_BUTTON_RADIUS = 64;
 /** Share of the deck width given to the slide zone in portrait. */
@@ -203,13 +201,9 @@ export class TouchDeck {
     if (!z) return false;
     if (owner === "jump") return dist(z.jump, x, y) <= z.jump.r + BUTTON_STICKY;
     if (owner === "bubble") return dist(z.bubble, x, y) <= z.bubble.r + BUTTON_STICKY;
-    const s = z.slide;
-    return (
-      x >= s.x - SLIDE_STICKY_PAD &&
-      x <= s.x + s.width + SLIDE_STICKY_PAD &&
-      y >= s.y - SLIDE_STICKY_PAD &&
-      y <= s.y + s.height + SLIDE_STICKY_PAD
-    );
+    // A slide touch stays slide-owned for its whole life (only a lift/cancel/blur/rezone ends it);
+    // maskFor clamps its position into the zone, so overshooting keeps the side it overshot toward.
+    return true;
   }
 
   /** The buttons an owned touch at x presses. */
@@ -220,8 +214,9 @@ export class TouchDeck {
     if (owner !== "slide" || !z) return 0;
     const half = (z.slide.width * DEAD_ZONE_FRAC) / 2;
     const centre = z.slide.x + z.slide.width / 2;
-    if (x < centre - half) return BTN.L;
-    if (x > centre + half) return BTN.R;
+    const cx = Math.min(Math.max(x, z.slide.x), z.slide.x + z.slide.width); // clamped into the zone
+    if (cx < centre - half) return BTN.L;
+    if (cx > centre + half) return BTN.R;
     return 0;
   }
 

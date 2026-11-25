@@ -7,7 +7,7 @@ No real-phone test has been done yet (emulated phone only). All numbers are name
 | `SLIDE_FRAC` | 0.45 of deck width | left thumb zone |
 | `DEAD_ZONE_FRAC` | 0.12 of slide width | thumb resting in the middle does nothing; raise if the hero twitches |
 | `SLIDE_EXTEND_Y` | 24 px | vertical hit-area extension of the slide zone |
-| `SLIDE_STICKY_PAD` | 48 px | a slide touch stays a slide touch this far outside the zone |
+| slide ownership | whole life | a touch that starts in the slide zone stays slide-owned until lifted; its x is clamped into the zone (overshoot keeps L/R) |
 | `MIN_BUTTON_RADIUS` / `MAX_BUTTON_RADIUS` | 40 / 64 px | radius = 28 % of the usable deck height, clamped |
 | `BUTTON_FORGIVE` | 10 px | fresh touch counts within r + 10 |
 | `BUTTON_STICKY` | 20 px | a touch that started on a button stays pressed within r + 20 |
@@ -22,4 +22,4 @@ Things to check on a real device:
 - Sticky release distances: do thumbs drift off buttons and lose them?
 - Slide thumb indicator is mask-driven (left / centre / right), not finger-tracking.
 - Landscape overlay layout when margins < 120 px: size/position of the corner controls.
-- A touch that drifts out of its sticky area is released for its remaining life (does not re-acquire); revisit if this feels harsh.
+- Button touches that drift beyond r + 20 are released until lifted (slide touches never are); revisit if that feels harsh.

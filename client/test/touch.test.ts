@@ -253,10 +253,23 @@ describe("TouchTracker (ownership and stickiness)", () => {
     expect(tr.update([t(1, m.x - 30, m.y)])).toBe(BTN.L);
     expect(tr.update([t(1, m.x + 30, m.y)])).toBe(BTN.R);
     expect(tr.update([t(1, m.x + 30, m.y + 20)])).toBe(BTN.R);
-    expect(tr.update([t(1, z.jump.cx, z.jump.cy)])).toBe(0); // far outside the slide zone's sticky area
+    expect(tr.update([t(1, z.jump.cx, z.jump.cy)])).toBe(BTN.R); // dragged over JUMP: still a slide touch, clamped x
   });
 
-  it("slide thumb drifting above/below the zone keeps working inside the sticky area", () => {
+  it("a slide touch overshooting far outside the zone keeps its side by clamped x until lifted", () => {
+    const tr = mk();
+    const far = 400;
+    expect(tr.update([t(1, m.x - 30, m.y)])).toBe(BTN.L);
+    expect(tr.update([t(1, z.slide.x + z.slide.width + far, m.y)])).toBe(BTN.R);
+    expect(tr.update([t(1, z.slide.x - far, m.y)])).toBe(BTN.L);
+    expect(tr.update([t(1, m.x + 30, z.slide.y - far)])).toBe(BTN.R); // far above: by x
+    expect(tr.update([t(1, m.x - 30, z.slide.y + z.slide.height + far)])).toBe(BTN.L); // far below
+    expect(tr.update([t(1, m.x, z.slide.y - far)])).toBe(0); // clamped x in the dead zone
+    expect(tr.update([])).toBe(0);
+    expect(tr.update([t(1, z.slide.x + z.slide.width + far, m.y)])).toBe(0); // fresh touch out there is ignored
+  });
+
+  it("slide thumb drifting above/below the zone keeps working", () => {
     const tr = mk();
     expect(tr.update([t(1, m.x - 30, m.y)])).toBe(BTN.L);
     expect(tr.update([t(1, m.x - 30, z.slide.y - SLIDE_EXTEND_Y - 10)])).toBe(BTN.L);

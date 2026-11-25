@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BTN } from "@bubble/shared";
 import { GamepadInput, STICK_DEADZONE } from "../src/input/gamepad";
+import { CombinedInput } from "../src/input/input";
 
 interface FakePad {
   connected: boolean;
@@ -57,5 +58,38 @@ describe("GamepadInput", () => {
     const p = pad();
     (p.buttons as unknown as { pressed: boolean; value: number }[])[2] = { pressed: false, value: 0.9 };
     expect(input([p]).sample()).toBe(BTN.F);
+  });
+});
+
+describe("GamepadInput default getter never throws", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const keys = { sample: () => BTN.J | BTN.F };
+
+  it("navigator.getGamepads missing (insecure http origin) -> 0, other sources unaffected", () => {
+    vi.stubGlobal("navigator", {});
+    const g = new GamepadInput();
+    expect(g.sample()).toBe(0);
+    expect(new CombinedInput([keys, g]).sample()).toBe(BTN.J | BTN.F);
+  });
+
+  it("navigator.getGamepads throwing (permissions policy) -> 0, other sources unaffected", () => {
+    vi.stubGlobal("navigator", {
+      getGamepads: () => {
+        throw new TypeError("blocked");
+      },
+    });
+    const g = new GamepadInput();
+    expect(g.sample()).toBe(0);
+    expect(new CombinedInput([keys, g]).sample()).toBe(BTN.J | BTN.F);
+  });
+
+  it("no navigator at all -> 0", () => {
+    vi.stubGlobal("navigator", undefined);
+    expect(new GamepadInput().sample()).toBe(0);
+  });
+
+  it("a normal navigator.getGamepads still works (null entries tolerated)", () => {
+    vi.stubGlobal("navigator", { getGamepads: () => [null, pad({ down: [15, 0] })] });
+    expect(new GamepadInput().sample()).toBe(BTN.R | BTN.J);
   });
 });

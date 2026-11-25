@@ -5,9 +5,19 @@ export const STICK_DEADZONE = 0.4;
 
 type PadList = ArrayLike<Gamepad | null>;
 
+/** Never throws: the API is missing on insecure origins (plain http LAN) and can be blocked by policy. */
+function defaultGetGamepads(): PadList {
+  try {
+    if (typeof navigator === "undefined") return [];
+    return navigator.getGamepads?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** Standard-mapping gamepad: d-pad or left stick moves, bottom face/d-pad up jumps, left face fires. */
 export class GamepadInput implements InputSource {
-  constructor(private readonly getGamepads: () => PadList = () => navigator.getGamepads()) {}
+  constructor(private readonly getGamepads: () => PadList = defaultGetGamepads) {}
 
   private pick(): Gamepad | null {
     const pads = this.getGamepads();
