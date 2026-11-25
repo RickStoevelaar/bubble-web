@@ -11,7 +11,8 @@
   "scripts": {
     "test": "vitest run",
     "build": "npm run build --workspaces --if-present",
-    "check-levels": "node tools/check-levels/build.mjs && node tools/check-levels/dist/cli.js"
+    "check-levels": "node tools/check-levels/build.mjs && node tools/check-levels/dist/cli.js",
+    "gen-levels": "node tools/gen-levels/build.mjs && node tools/gen-levels/dist/cli.js"
   },
   "engines": {
     "node": ">=22"

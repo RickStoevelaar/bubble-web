@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node check-levels/build.mjs && node level-viewer/build.mjs",
+    "build": "node check-levels/build.mjs && node level-viewer/build.mjs && node gen-levels/build.mjs",
     "check-levels": "node check-levels/build.mjs && node check-levels/dist/cli.js",
+    "gen-levels": "node gen-levels/build.mjs && node gen-levels/dist/cli.js",
     "viewer": "node level-viewer/build.mjs --serve --watch"
   }
 }

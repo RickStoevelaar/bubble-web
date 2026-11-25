@@ -4,6 +4,6 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["check-levels", "level-viewer", "test"],
+  "include": ["check-levels", "gen-levels", "level-viewer", "test"],
   "exclude": ["**/dist"]
 }
