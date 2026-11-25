@@ -74,10 +74,11 @@ export function repairItems(raw: unknown): ItemState[] {
       onGround: r.onGround === true,
       kind,
       sprite: Number.isInteger(r.sprite) && r.sprite! >= 0 && r.sprite! <= 7 ? r.sprite! : 0,
+      // Same key order as a freshly spawned power item, so a restored state serializes byte-identically.
+      ...(kind === "power" ? { power: r.power } : {}),
       value: Math.max(0, num(r.value, 100)),
       despawnTicks: Math.max(1, num(r.despawnTicks, TUNING.foodTtlTicks)),
     };
-    if (kind === "power") item.power = r.power;
     out.push(item);
   }
   return out;

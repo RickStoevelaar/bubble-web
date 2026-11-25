@@ -4,6 +4,7 @@ import type { LevelData } from "../level";
 import type { Rng } from "../rng";
 import type { CounterKind, EnemyState, GameState, PlayerState, PowerId, SimEvent } from "../types";
 import { startDeath } from "./enemy-common";
+import { killTrapped } from "./enemies";
 import { FOOD_BY_ENEMY, addScore, chainScore } from "./scoring";
 
 /** What a power does when collected; `skip` and `clear` are the one-off effects, the rest are lasting. */
@@ -91,18 +92,24 @@ export function maybeSpawnItem(sim: PowerSim): void {
   }
 }
 
-/** Every active or trapped enemy (not the hurry wisp or the boss) dies in id order; the n-th scores chainScore(n). */
+/**
+ * Every active or trapped enemy (not the hurry wisp or the boss) dies in id order; the n-th scores chainScore(n).
+ * A trapped enemy goes through the same `killTrapped` as a normal pop (its arc and the pop event start at the
+ * bubble, where the enemy visibly is); an orphan whose bubble is missing dies where it is.
+ */
 function popAll(sim: PowerSim, collector: 0 | 1, events: SimEvent[]): void {
   const state = sim.state;
   const victims = state.enemies
     .filter((e) => (e.state === "active" || e.state === "trapped") && e.type !== "hurry" && e.type !== "boss")
     .sort((a, b) => a.id - b.id);
-  const ids = new Set(victims.map((e) => e.id));
-  state.bubbles = state.bubbles.filter((b) => !(b.trapped && ids.has(b.trapped.enemyId)));
   victims.forEach((e: EnemyState, i) => {
-    startDeath(e);
+    const bubble = e.state === "trapped" ? state.bubbles.find((b) => b.trapped?.enemyId === e.id) : undefined;
+    if (bubble) {
+      killTrapped(state, bubble);
+      state.bubbles = state.bubbles.filter((b) => b !== bubble);
+    } else startDeath(e);
     events.push(...addScore(sim, collector, chainScore(i + 1)));
-    events.push({ kind: "pop", player: collector, x: e.x, y: e.y });
+    events.push({ kind: "pop", player: collector, x: bubble ? bubble.x : e.x, y: bubble ? bubble.y : e.y });
   });
 }
 

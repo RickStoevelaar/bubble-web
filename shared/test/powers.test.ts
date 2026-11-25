@@ -43,10 +43,11 @@ const addEnemy = (sim: Sim, over: Partial<EnemyState>): EnemyState => {
   sim.state.enemies.push(e);
   return e;
 };
-const trapIn = (sim: Sim, e: EnemyState): BubbleState => {
+/** Traps `e` in a bubble; `dx`/`dy` place the bubble away from the enemy (a trapped enemy's own x/y lags its bubble). */
+const trapIn = (sim: Sim, e: EnemyState, dx = 0, dy = 0): BubbleState => {
   e.state = "trapped";
   const b: BubbleState = {
-    id: sim.state.nextId++, x: e.x, y: e.y, vx: 0, vy: -TUNING.bubbleRise, kind: "normal", phase: "float",
+    id: sim.state.nextId++, x: e.x + dx, y: e.y + dy, vx: 0, vy: -TUNING.bubbleRise, kind: "normal", phase: "float",
     ageTicks: 0, owner: 0, trapped: { type: e.type, escapeIn: 100_000, enemyId: e.id },
   };
   sim.state.bubbles.push(b);
@@ -504,6 +505,49 @@ describe("spark and flask", () => {
     expect(c.state.items.filter((i) => i.kind === "food")).toHaveLength(TUNING.floodFoodCount);
   });
 
+  it.each(["spark", "flask"] as const)("%s kills a trapped enemy from its BUBBLE position, not the capture point", (power) => {
+    const sim = newSim();
+    const e = addEnemy(sim, { x: 100, y: 150, type: "chaser" });
+    const b = trapIn(sim, e, 30, -60);
+    give(sim, power);
+    const ev = run(sim, 1);
+    // the bubble drifted this tick (bubbles step before items) and is removed at the pop, so its last position is final
+    const bx = b.x;
+    const by = b.y;
+    expect(Math.abs(bx - 100)).toBeGreaterThanOrEqual(29);
+    expect(Math.abs(by - 150)).toBeGreaterThanOrEqual(55);
+    expect(e.state).toBe("dead");
+    expect(sim.state.bubbles.some((q) => q.id === b.id)).toBe(false);
+    const pop = ev.filter((q) => q.kind === "pop");
+    expect(pop).toHaveLength(1);
+    expect(pop[0]).toMatchObject({ x: bx, y: by, player: 0 });
+    expect(e.x).toBe(bx);
+    expect(e.y).toBe(by);
+    expect(e.vy).toBe(TUNING.enemyDeathVel);
+    run(sim, TUNING.enemyDeathMaxTicks + 5);
+    const food = sim.state.items.filter((i) => i.kind === "food" && i.value === FOOD_BY_ENEMY.chaser.value);
+    expect(food).toHaveLength(1);
+    const reach = TUNING.enemyDeathSpeed * TUNING.enemyDeathMaxTicks;
+    expect(Math.abs(food[0]!.x - bx)).toBeLessThanOrEqual(reach + 1);
+    expect(Math.abs(food[0]!.x - 100)).toBeGreaterThan(20); // not derived from the capture point (bubble is 30 px aside)
+  });
+
+  it("a trapped enemy whose bubble is gone is killed from its own position without throwing", () => {
+    const sim = newSim();
+    const e = addEnemy(sim, { x: 100, y: 150, type: "walker" });
+    e.state = "trapped"; // no bubble at all
+    const orphan = addEnemy(sim, { x: 120, y: 150, type: "walker" });
+    trapIn(sim, orphan);
+    sim.state.bubbles.pop(); // bubble removed in the same tick
+    give(sim, "spark");
+    let ev: SimEvent[] = [];
+    expect(() => (ev = run(sim, 1))).not.toThrow();
+    expect(e.state).toBe("dead");
+    expect(orphan.state).toBe("dead");
+    expect(ev.filter((q) => q.kind === "pop").map((q) => q.x)).toEqual([100, 120]);
+    expect(sim.state.players[0]!.score).toBe(1000 + 2000);
+  });
+
   it("two active enemies score through addScore's extra-life path (oneup propagates)", () => {
     const sim = newSim();
     addEnemy(sim, { x: 150 });
@@ -568,7 +612,7 @@ describe("restore", () => {
     expect(() => run(r, 5)).not.toThrow();
   });
 
-  it("JSON round trip with live power items, an active ring and a pending round continues identically for 300 ticks", () => {
+  it("JSON round trip with live power items and an active ring continues identically for 300 ticks", () => {
     const a = new Sim(levels(12), 99, 2);
     run(a, 40, [BTN.R | BTN.J | BTN.F, BTN.L | BTN.F]);
     a.state.items.push({
@@ -580,14 +624,34 @@ describe("restore", () => {
     pl.powers.speed = true;
     pl.counters = { bubbles: 3, jumps: 4, distance: 5 };
     pl.powerStep = 3;
-    a.state.pendingRound = 3;
     const b = Sim.restore(levels(12), JSON.parse(JSON.stringify(a.state)));
     for (let t = 0; t < 300; t++) {
       const btn: [number, number] = [(t * 7) % 16, (t * 5 + 3) % 16];
       expect(JSON.stringify(b.step(btn))).toBe(JSON.stringify(a.step(btn)));
     }
     expect(JSON.stringify(b.state)).toBe(JSON.stringify(a.state));
-    expect(a.state.round).toBeGreaterThanOrEqual(3);
+  });
+
+  it("a non-zero pendingRound survives the JSON round trip and resolves identically in both sims", () => {
+    const a = new Sim(levels(12), 99, 2);
+    run(a, 40, [BTN.R | BTN.J, BTN.L | BTN.F]);
+    a.state.pendingRound = 4;
+    const json = JSON.stringify(a.state);
+    expect((JSON.parse(json) as { pendingRound: number }).pendingRound).toBe(4);
+    const b = Sim.restore(levels(12), JSON.parse(json));
+    expect(b.state.pendingRound).toBe(4);
+    const evA = a.step([0, 0]);
+    const evB = b.step([0, 0]);
+    expect(a.state.round).toBe(4);
+    expect(b.state.round).toBe(4);
+    expect(a.state.pendingRound).toBe(0);
+    expect(evB.map((e) => e.kind)).toEqual(evA.map((e) => e.kind));
+    expect(evB[evB.length - 1]!.kind).toBe("clear");
+    for (let t = 0; t < 300; t++) {
+      const btn: [number, number] = [(t * 3) % 16, (t * 11 + 1) % 16];
+      expect(JSON.stringify(b.step(btn))).toBe(JSON.stringify(a.step(btn)));
+    }
+    expect(JSON.stringify(b.state)).toBe(JSON.stringify(a.state));
   });
 });
 
