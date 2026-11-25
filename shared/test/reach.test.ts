@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BOSS_ARENA,
+  GAME_LEVELS,
   GRID_H,
   GRID_W,
   MARGIN_JUMP,
@@ -29,16 +30,22 @@ describe("reach analyzer (moved from the secrets test)", () => {
     expect(startsOfTiles([{ col: 3, row: 25 }])).toEqual([{ x: 3 * TILE + TILE / 2, y: 25 * TILE + 1 }]);
   });
 
-  it("room PIP has exactly 524 standing nodes, none trapped, largest rise 40", () => {
-    // Was 374 before moveBody stopped rewinding bodies embedded in a thick stroke: the 2-row letter strokes used to
-    // snap a body that rose into them back to the face, so the 150 extra embedded standing spots (all in one
-    // component; trapped and maxRise unchanged) were unreachable sideways.
+  it("room PIP has exactly 365 standing nodes, none trapped, largest rise 40", () => {
+    // Original moveBody: 374. The wall rule rewound a body embedded in a 2-row letter stroke, so nine embedded
+    // standing spots were only reachable through that backward snap and are gone (365 is a strict subset of 374).
     const g = analyseStands(SECRET_ROOMS[0].level, roomStarts(SECRET_ROOMS[0]), MARGIN_JUMP);
-    expect(g.nodes.size).toBe(524);
-    expect(g.component.size).toBe(524);
+    expect(g.nodes.size).toBe(365);
+    expect(g.component.size).toBe(365);
     expect(g.trapped).toEqual([]);
     expect(g.maxRise).toBe(40);
     expect(g.maxRise).toBeLessThanOrEqual(jumpApex(TUNING.jumpVel) - 4);
+  }, 120000);
+
+  it("round 23 has no standing node on the ceiling lid (the old rise-above-the-field quirk gave 224 at y=-7)", () => {
+    const lv = GAME_LEVELS[22]!;
+    const g = analyseStands(lv, startsOfTiles(playerSpawnTiles(lv).map((s) => s!)), MARGIN_JUMP);
+    expect(g.nodes.size).toBe(789);
+    expect([...g.nodes.values()].every((p) => p.y >= PLAYER_SIZE / 2)).toBe(true);
   }, 120000);
 
   it("rooms POP and WEB are strongly connected", () => {

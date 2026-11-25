@@ -40,6 +40,16 @@ describe("squeeze under a thick slab touching the border", () => {
     }
     expect(squeezed).toBeGreaterThan(5); // the scenario really overlapped the slab rows
     expect(minLeft).toBeGreaterThanOrEqual(16);
+    // Pressing left inside the slab stops at the border's inner face with hitWall.
+    let hit = false;
+    for (let i = 0; i < 30; i++) {
+      b.vx = -1;
+      b.vy = -TUNING.gravity;
+      b.y = 168;
+      hit = moveBody(lv, b, PLAYER_SIZE);
+    }
+    expect(b.x - HALF).toBe(16);
+    expect(hit).toBe(true);
   });
 
   it("right border: the body's right edge never exceeds 240", () => {
@@ -122,6 +132,75 @@ describe("slab touching the border", () => {
     }
     expect(b.x + HALF).toBe(240);
     expect(hits).toBeGreaterThan(10);
+  });
+});
+
+/** Bar (rows 20-21) joined to a tall pillar: the head can enter the bar while the feet are still beside the pillar. */
+const PILLAR_LEFT = mk([
+  { r0: 20, r1: 21, c0: 10, c1: 15 },
+  { r0: 4, r1: 25, c0: 16, c1: 16 },
+]); // pillar face at px 128, body flush at x = 121
+const PILLAR_RIGHT = mk([
+  { r0: 20, r1: 21, c0: 17, c1: 22 },
+  { r0: 4, r1: 25, c0: 16, c1: 16 },
+]); // pillar face at px 136, body flush at x = 143
+
+describe("tall wall joined to a thick slab (no tunnelling)", () => {
+  it("right of the bar: flush under the bar, jumping and holding right never passes the pillar", () => {
+    const b = body(121, FLOOR_Y, 0, 0, true);
+    for (let t = 0; t < 80; t++) {
+      b.vx = 1;
+      if (b.onGround) b.vy = TUNING.jumpVel;
+      const hit = moveBody(PILLAR_LEFT, b, PLAYER_SIZE);
+      expect(b.x, `t${t}`).toBeLessThanOrEqual(121);
+      expect(hit, `hitWall t${t}`).toBe(true);
+    }
+  });
+  it("left mirror: bar to the right of the pillar, holding left never passes the pillar", () => {
+    const b = body(143, FLOOR_Y, 0, 0, true);
+    for (let t = 0; t < 80; t++) {
+      b.vx = -1;
+      if (b.onGround) b.vy = TUNING.jumpVel;
+      const hit = moveBody(PILLAR_RIGHT, b, PLAYER_SIZE);
+      expect(b.x, `t${t}`).toBeGreaterThanOrEqual(143);
+      expect(hit, `hitWall t${t}`).toBe(true);
+    }
+  });
+  it("a body fully inside the bar rows still stops at the pillar face", () => {
+    const b = body(121, 168);
+    for (let t = 0; t < 20; t++) {
+      b.vx = 1;
+      b.vy = -TUNING.gravity;
+      b.y = 168;
+      const hit = moveBody(PILLAR_LEFT, b, PLAYER_SIZE);
+      expect(b.x).toBeLessThanOrEqual(121);
+      expect(hit).toBe(true);
+    }
+  });
+  it("a hopping walker beside the join flips at the pillar and never passes", () => {
+    const rng = new Rng(5);
+    for (const [lv, start, faceDir] of [
+      [PILLAR_LEFT, 100, 1],
+      [PILLAR_RIGHT, 170, -1],
+    ] as const) {
+      const e = body(start, 26 * TILE - ENEMY_SIZE / 2, 0, 0, true);
+      let dir: number = faceDir;
+      let flips = 0;
+      for (let t = 0; t < 4000; t++) {
+        if (e.onGround && rng.int(20) === 0) {
+          e.vy = TUNING.jumpVel;
+          e.onGround = false;
+        }
+        e.vx = dir * TUNING.enemyWalkSpeed;
+        if (moveBody(lv, e, ENEMY_SIZE)) {
+          dir = -dir;
+          flips++;
+        }
+        if (faceDir === 1) expect(e.x + ENEMY_SIZE / 2, `t${t}`).toBeLessThanOrEqual(128);
+        else expect(e.x - ENEMY_SIZE / 2, `t${t}`).toBeGreaterThanOrEqual(136);
+      }
+      expect(flips).toBeGreaterThan(3);
+    }
   });
 });
 
@@ -237,8 +316,8 @@ describe("one-way platforms", () => {
   });
 });
 
-/** The pre-change algorithm, verbatim, with flags saying when the new rules legitimately differ. */
-function oldMove(lv: LevelData, b: Body, size: number): { hit: boolean; rewind: boolean; clamp: boolean } {
+/** The pre-change algorithm, verbatim; also reports the start x so classes derive from OLD outputs only. */
+function oldMove(lv: LevelData, b: Body, size: number): { hit: boolean; startX: number; clamp: boolean } {
   const isSolid = (tx: number, ty: number) => (tx < 0 || tx >= GRID_W ? true : ty < 0 || ty >= GRID_H ? false : lv.tiles[ty]![tx] === "#");
   const isWall = (tx: number, ty: number) => isSolid(tx, ty) && (isSolid(tx, ty - 1) || isSolid(tx, ty + 1));
   const wic = (tx: number, top: number, bottom: number) => {
@@ -248,22 +327,20 @@ function oldMove(lv: LevelData, b: Body, size: number): { hit: boolean; rewind: 
     return false;
   };
   const H = size / 2;
+  const startX = b.x;
   let hit = false;
-  let rewind = false;
   let nx = b.x + b.vx;
   const top = b.y - H;
   const bottom = b.y + H;
   if (b.vx > 0) {
     const tx = Math.floor((nx + H - EPS) / TILE);
     if (wic(tx, top, bottom)) {
-      if (tx >= 2 && tx < GRID_W - 2 && wic(Math.floor((b.x + H - EPS) / TILE), top, bottom)) rewind = true;
       nx = tx * TILE - H;
       hit = true;
     }
   } else if (b.vx < 0) {
     const tx = Math.floor((nx - H) / TILE);
     if (wic(tx, top, bottom)) {
-      if (tx >= 2 && tx < GRID_W - 2 && wic(Math.floor((b.x - H + EPS) / TILE), top, bottom)) rewind = true;
       nx = (tx + 1) * TILE + H;
       hit = true;
     }
@@ -290,35 +367,39 @@ function oldMove(lv: LevelData, b: Body, size: number): { hit: boolean; rewind: 
   b.y = ny;
   const clamp = b.vy < 0 && b.y - H < 0;
   if (b.y - H >= FIELD_H) b.y -= FIELD_H + size;
-  return { hit, rewind, clamp };
+  return { hit, startX, clamp };
 }
 
-describe("differential: new moveBody equals the old algorithm wherever the new rules do not apply", () => {
-  it("matches on tens of thousands of random states and differs only in the flagged cases", () => {
+describe("differential: new moveBody vs the old algorithm", () => {
+  it("is identical wherever the old code did not rewind, and never worse where it did", () => {
     const rng = new Rng(20260);
-    const levels: LevelData[] = [
-      TEST_LEVEL,
-      mk([
-        { r0: 20, r1: 21, c0: 2, c1: 9 },
-        { r0: 12, r1: 13, c0: 12, c1: 20 },
-        { r0: 6, r1: 6, c0: 4, c1: 9 },
-      ]),
-    ];
     const tiles = Array.from({ length: GRID_H }, (_, y) =>
       Array.from({ length: GRID_W }, (_, x) => (x < 2 || x > 29 || y > 25 || rng.next() < 0.12 ? "#" : ".")).join(""),
     );
-    levels.push({ round: 1, theme: 0, tiles, enemies: [], drift: [] });
-    let compared = 0;
-    let flagged = 0;
-    let flushWall = 0;
-    for (let i = 0; i < 40000; i++) {
+    const levels: LevelData[] = [
+      TEST_LEVEL,
+      PILLAR_LEFT,
+      PILLAR_RIGHT,
+      mk([
+        { r0: 20, r1: 21, c0: 2, c1: 9 },
+        { r0: 20, r1: 21, c0: 22, c1: 29 },
+      ]),
+      mk([
+        { r0: 12, r1: 13, c0: 12, c1: 20 },
+        { r0: 6, r1: 6, c0: 4, c1: 9 },
+      ]),
+      { round: 1, theme: 0, tiles, enemies: [], drift: [] },
+    ];
+    const cls = { identical: 0, rewound: 0, embeddedFlush: 0, clamp: 0 };
+    for (let i = 0; i < 60000; i++) {
       const lv = levels[i % levels.length]!;
-      const size = [PLAYER_SIZE, ENEMY_SIZE, TUNING.itemSize][rng.int(3)]!;
-      const q = rng.int(4) === 0 ? 2 : 0.25; // sometimes quantised so flush states occur
+      const size = [12, PLAYER_SIZE, 16][rng.int(3)]!;
+      const H = size / 2;
+      const q = [0.001, 0.25, 2][rng.int(3)]!; // coarse grids hit flush states often
       const s: Body = {
-        x: Math.round((16 + rng.next() * 224) / q) * q,
+        x: Math.round((16 + H + rng.next() * (224 - size)) / q) * q,
         y: Math.round((-10 + rng.next() * 240) / q) * q,
-        vx: [-1.5, -1, 0, 1, 1.5][rng.int(5)]!,
+        vx: (rng.int(33) - 16) / 10,
         vy: (rng.next() - 0.6) * 8,
         onGround: false,
       };
@@ -326,17 +407,36 @@ describe("differential: new moveBody equals the old algorithm wherever the new r
       const n = { ...s };
       const o = oldMove(lv, a, size);
       const hit = moveBody(lv, n, size);
-      if (o.rewind || o.clamp) {
-        flagged++;
+      const back = s.vx > 0 ? o.startX - a.x : s.vx < 0 ? a.x - o.startX : 0;
+      if (o.clamp) {
+        cls.clamp++;
+        continue; // the top clamp legitimately changes y and vy
+      }
+      if (back > EPS) {
+        cls.rewound++;
+        // Never worse than the old snap, and never into a border column.
+        if (s.vx > 0) expect(n.x).toBeGreaterThanOrEqual(a.x);
+        else expect(n.x).toBeLessThanOrEqual(a.x);
+        expect(n.x - H).toBeGreaterThanOrEqual(16 - 1e-9);
+        expect(n.x + H).toBeLessThanOrEqual(240 + 1e-9);
         continue;
       }
-      compared++;
-      expect(n).toEqual(a);
-      expect(hit).toBe(o.hit);
-      if (o.hit) flushWall++;
+      const same = n.x === a.x && n.y === a.y && n.vx === a.vx && n.vy === a.vy && n.onGround === a.onGround && hit === o.hit;
+      if (same) {
+        cls.identical++;
+        continue;
+      }
+      // The only other allowed difference: the old code stopped at a face (hit, never backward) and the new body
+      // moved on because it is embedded in a slab (edge in or on an interior tile boundary): exactly vx, no hit.
+      expect(o.hit).toBe(true);
+      expect(hit).toBe(false);
+      expect(n.x).toBe(s.x + s.vx);
+      cls.embeddedFlush++;
     }
-    expect(compared).toBeGreaterThan(20000);
-    expect(flushWall).toBeGreaterThan(100);
-    expect(flagged).toBeGreaterThan(0);
+    console.log("differential classes", JSON.stringify(cls));
+    expect(cls.identical).toBeGreaterThan(30000);
+    expect(cls.rewound).toBeGreaterThan(50);
+    expect(cls.embeddedFlush).toBeGreaterThan(0);
+    expect(cls.clamp).toBeGreaterThan(0);
   });
 });

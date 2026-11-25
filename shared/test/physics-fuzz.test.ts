@@ -17,9 +17,23 @@ function slabLevel(lid: boolean): LevelData {
   return { round: 1, theme: 0, tiles: rows.map((r) => r.join("")), enemies: [], drift: [] };
 }
 
+/** A full-height pillar at column 16 (px 128..136) joined to bars on each side: nothing can go around it. */
+function pillarLevel(): LevelData {
+  const rows: string[][] = Array.from({ length: GRID_H }, () => Array<string>(GRID_W).fill("."));
+  for (let y = 0; y < GRID_H; y++) for (const x of [0, 1, 16, 30, 31]) rows[y]![x] = "#";
+  for (const y of [26, 27]) for (let x = 0; x < GRID_W; x++) rows[y]![x] = "#";
+  for (const y of [20, 21]) for (let x = 10; x <= 15; x++) rows[y]![x] = "#";
+  for (const y of [12, 13]) for (let x = 17; x <= 22; x++) rows[y]![x] = "#";
+  for (const y of [8, 9]) for (let x = 5; x <= 15; x++) rows[y]![x] = "#";
+  for (const y of [8, 9]) for (let x = 17; x <= 26; x++) rows[y]![x] = "#";
+  return { round: 1, theme: 0, tiles: rows.map((r) => r.join("")), enemies: [], drift: [] };
+}
+const PILLAR_STARTS = [{ x: 121, y: 26 * TILE - HALF }, { x: 143, y: 26 * TILE - HALF }, { x: 100, y: 26 * TILE - HALF }, { x: 170, y: 26 * TILE - HALF }];
+
 const SETS: { name: string; level: LevelData; starts?: { x: number; y: number }[] }[] = [
   { name: "squeeze slabs, gapless lid", level: slabLevel(true), starts: [{ x: 23, y: 26 * TILE - HALF }, { x: 233, y: 26 * TILE - HALF }, { x: 100, y: 6 * TILE - HALF }, { x: 128, y: 26 * TILE - HALF }] },
   { name: "squeeze slabs, open top", level: slabLevel(false), starts: [{ x: 23, y: 26 * TILE - HALF }, { x: 233, y: 26 * TILE - HALF }, { x: 100, y: 6 * TILE - HALF }, { x: 128, y: 26 * TILE - HALF }] },
+  { name: "pillar joined to bars", level: pillarLevel(), starts: PILLAR_STARTS },
   ...GAME_LEVELS.slice(0, 25).map((level, i) => ({ name: `round ${i + 1}`, level })),
   { name: "TEST_LEVEL", level: TEST_LEVEL },
   ...SECRET_ROOMS.map((r) => ({ name: `secret ${r.word}`, level: r.level })),
@@ -42,6 +56,9 @@ function fuzz(level: LevelData, seed: number, start?: { x: number; y: number }):
     p.vy = 0;
     p.onGround = true;
   }
+  // Full-height pillar at px 128..136: the body must stay on the side it started on.
+  const pillar = level.tiles[5]![16] === "#" && level.tiles[1]![16] === "#" && level.tiles[22]![16] === "#" && level.tiles[3]![17] === "." && level.tiles[3]![15] === ".";
+  const leftSide = p.x < 128;
   const rng = new Rng(seed * 7919 + 1);
   let buttons = 0;
   let hold = 0;
@@ -62,6 +79,10 @@ function fuzz(level: LevelData, seed: number, start?: { x: number; y: number }):
     const at = `${level.round}/${seed}/t${t} x=${p.x} y=${p.y} vy=${p.vy}`;
     // Finite numbers.
     expect(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.vx) && Number.isFinite(p.vy), at).toBe(true);
+    if (pillar) {
+      if (leftSide) expect(p.x + HALF, `crossed the pillar: ${at}`).toBeLessThanOrEqual(128);
+      else expect(p.x - HALF, `crossed the pillar: ${at}`).toBeGreaterThanOrEqual(136);
+    }
     // Never inside the 2-wide side borders (inner faces at px 16 and 240).
     expect(p.x - HALF, at).toBeGreaterThanOrEqual(16);
     expect(p.x + HALF, at).toBeLessThanOrEqual(240);

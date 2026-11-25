@@ -30,18 +30,36 @@ function wallInColumn(lv: LevelData, tx: number, top: number, bottom: number): b
   return false;
 }
 
-/** The 2-wide side border always blocks and always pushes a body back out; only interior slabs let a body pass. */
+/** Side-border width in tiles (the lint enforces it). The border always blocks and always pushes a body back out. */
 const BORDER_COLS = 2;
 
+/** Extent [top, bottom] of the contiguous wall tiles in column `tx` through row `ty`. */
+function wallRun(lv: LevelData, tx: number, ty: number): [number, number] {
+  let t = ty;
+  let u = ty;
+  while (isWall(lv, tx, t - 1)) t--;
+  while (isWall(lv, tx, u + 1)) u++;
+  return [t, u];
+}
+
 /**
- * True if wall column `tx` stops a body whose leading edge currently lies in column `edgeCol`. A body already
- * overlapping a wall (edgeCol holds one: it rose into a thick slab) is never rewound or reported as hitting, which
- * also covers the tile boundaries inside the slab itself. The border is exempt so a slab touching it still stops
- * the body at the border's inner face.
+ * True if wall column `tx` stops a body whose leading edge currently lies in column `edgeCol`. Decided per row,
+ * because a body whose head is in a thick slab and whose feet are beside a tall wall joined to it must still stop:
+ * a wall tile is only passable when the edge column holds a wall in that same row AND the tx wall there is no taller
+ * than the edge column's (the same slab, so the body is embedded in it, never rewound; this also covers the tile
+ * boundaries inside the slab). A taller wall is a real face (a pillar joined to the slab) and blocks.
  */
 function blocks(lv: LevelData, tx: number, edgeCol: number, top: number, bottom: number): boolean {
-  if (!wallInColumn(lv, tx, top, bottom)) return false;
-  return tx < BORDER_COLS || tx >= GRID_W - BORDER_COLS || !wallInColumn(lv, edgeCol, top, bottom);
+  if (tx < BORDER_COLS || tx >= GRID_W - BORDER_COLS) return wallInColumn(lv, tx, top, bottom);
+  const r1 = Math.floor((bottom - EPS) / TILE);
+  for (let ty = Math.floor(top / TILE); ty <= r1; ty++) {
+    if (!isWall(lv, tx, ty)) continue;
+    if (!isWall(lv, edgeCol, ty)) return true;
+    const [t, u] = wallRun(lv, tx, ty);
+    const [et, eu] = wallRun(lv, edgeCol, ty);
+    if (t < et || u > eu) return true;
+  }
+  return false;
 }
 
 /**
