@@ -6,6 +6,7 @@ import type { GameState, PlayerState, SimEvent } from "../types";
 import { stepBubbles } from "./bubbles";
 import { stepEnemies } from "./enemies";
 import { PLAYER_SIZE, stepPlayer } from "./player";
+import { stepRound } from "./round";
 
 const P1_SPAWN_COL = 3;
 const P2_SPAWN_COL = 28;
@@ -93,6 +94,9 @@ export class Sim {
       items: [],
       roundTicks: 0,
       hurryActive: false,
+      enemiesSeen: false,
+      phaseTicks: 0,
+      runOver: false,
       nextId: 1,
       rngState: this.rng.getState(),
     };
@@ -100,8 +104,8 @@ export class Sim {
   }
 
   /**
-   * Rebuilds a Sim from a serialized state. The RNG stream is not part of the
-   * state, so it is reseeded deterministically from the tick.
+   * Rebuilds a Sim from a serialized state. The RNG stream is restored from
+   * `state.rngState`; seeding from the tick is only a fallback for older saves.
    */
   static restore(levels: LevelData[], state: GameState): Sim {
     const sim = new Sim(levels, state.tick, state.players.length === 2 ? 2 : 1);
@@ -128,6 +132,8 @@ export class Sim {
     this.state.phase = "round";
     this.state.roundTicks = 0;
     this.state.hurryActive = false;
+    this.state.enemiesSeen = false;
+    this.state.phaseTicks = 0;
     this.state.enemies = lv.enemies.map((s) => ({
       id: this.state.nextId++,
       type: s.type,
@@ -155,10 +161,31 @@ export class Sim {
     return 1;
   }
 
+  /** Free continue after game over: scores reset, lives restored, same round reloaded. Throws outside "gameover". */
+  continueRun(): SimEvent[] {
+    if (this.state.phase !== "gameover" || this.state.runOver) throw new Error("continueRun is only valid in phase gameover");
+    this.loadRound(this.state.round);
+    for (const p of this.state.players) {
+      p.score = 0;
+      p.lives = TUNING.startLives;
+      p.state = "alive";
+      p.stateTicks = 0;
+      p.invulnTicks = TUNING.invulnTicks;
+    }
+    return [{ kind: "continue" }];
+  }
+
+  /** Declines the continue: the run is over and gameplay stops. Throws outside "gameover". */
+  endRun(): void {
+    if (this.state.phase !== "gameover") throw new Error("endRun is only valid in phase gameover");
+    this.state.runOver = true;
+  }
+
   /** One call = one 60 Hz tick. */
   step(buttons: [number, number]): SimEvent[] {
     const events: SimEvent[] = [];
     this.state.tick++;
+    if (this.state.runOver || this.state.phase === "gameover" || this.state.phase === "ending") return events;
     if (this.state.phase === "round") this.state.roundTicks++;
     for (const p of this.state.players) {
       stepPlayerLife(this.currentLevel, p);
@@ -166,6 +193,7 @@ export class Sim {
     }
     events.push(...stepBubbles(this, buttons));
     events.push(...stepEnemies(this));
+    events.push(...stepRound(this));
     this.state.rngState = this.rng.getState();
     return events;
   }

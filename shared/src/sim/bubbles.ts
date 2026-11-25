@@ -28,7 +28,7 @@ function startFloat(b: BubbleState): void {
 
 /** A launch-phase bubble captures the first active enemy it overlaps and starts floating. */
 function tryTrap(state: GameState, b: BubbleState): void {
-  const e = state.enemies.find((en) => en.state === "active" && bubbleTouchesEnemy(b, en));
+  const e = state.enemies.find((en) => en.state === "active" && en.type !== "hurry" && bubbleTouchesEnemy(b, en));
   if (!e) return;
   trapEnemy(b, e);
   startFloat(b);

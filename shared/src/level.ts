@@ -1,6 +1,6 @@
 import { GRID_H, GRID_W, TILE } from "./constants";
 
-export type EnemyType = "walker" | "chaser" | "thrower" | "breather" | "bouncer" | "flyer" | "boss";
+export type EnemyType = "walker" | "chaser" | "thrower" | "breather" | "bouncer" | "flyer" | "boss" | "hurry";
 
 export interface EnemySpawn {
   type: EnemyType;
@@ -60,6 +60,7 @@ export function validateLevel(lv: LevelData): string[] {
 
   for (const e of lv.enemies) {
     const where = `enemy ${e.type} at (${e.col}, ${e.row})`;
+    if (e.type === "hurry") problems.push(`${where} is runtime-only and cannot be placed in a level`);
     if (e.col < 0 || e.col >= GRID_W || e.row < 0 || e.row >= GRID_H) {
       problems.push(`${where} is outside the grid`);
     } else if (lv.tiles[e.row]?.[e.col] === "#") {

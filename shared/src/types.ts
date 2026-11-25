@@ -72,6 +72,12 @@ export interface GameState {
   items: ItemState[];
   roundTicks: number;
   hurryActive: boolean;
+  /** True once a real (non-hurry) enemy has been alive this round; guards round-clear. */
+  enemiesSeen: boolean;
+  /** Ticks spent in the current non-round phase (clearing countdown). */
+  phaseTicks: number;
+  /** True once the run is finished (ended from game over, or last round cleared); gameplay stops. */
+  runOver: boolean;
   /** Next unique entity id (monotonic, survives restore). */
   nextId: number;
   /** mulberry32 state of Sim.rng, synced at the end of every step so restore resumes the stream. */

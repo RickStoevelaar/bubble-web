@@ -1,4 +1,4 @@
-import { TILE, TUNING } from "../constants";
+import { FIELD_H, FIELD_W, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import type { Rng } from "../rng";
@@ -51,6 +51,28 @@ function walker(sim: EnemySim, e: EnemyState): void {
   if (!e.onGround) e.dropping = false;
 }
 
+/** Hurry-up ghost: pursues the nearest alive player along one axis per tick, through tiles, inside the field. */
+function hurryChaser(sim: EnemySim, e: EnemyState): void {
+  let target: PlayerState | undefined;
+  let best = Infinity;
+  for (const p of sim.state.players) {
+    if (p.state !== "alive") continue;
+    const d = Math.abs(p.x - e.x) + Math.abs(p.y - e.y);
+    if (d < best) {
+      best = d;
+      target = p;
+    }
+  }
+  if (!target) return;
+  const dx = target.x - e.x;
+  const dy = target.y - e.y;
+  const s = TUNING.hurryChaserSpeed;
+  if (Math.abs(dx) >= Math.abs(dy)) e.x += Math.min(Math.abs(dx), s) * Math.sign(dx);
+  else e.y += Math.min(Math.abs(dy), s) * Math.sign(dy);
+  e.x = Math.min(FIELD_W - HALF, Math.max(HALF, e.x));
+  e.y = Math.min(FIELD_H - HALF, Math.max(HALF, e.y));
+}
+
 /** Per-type behavior table. Only the walker exists so far; later tasks fill in the rest. */
 export const ENEMY_BEHAVIORS: Record<EnemyState["type"], Behavior> = {
   walker,
@@ -60,6 +82,7 @@ export const ENEMY_BEHAVIORS: Record<EnemyState["type"], Behavior> = {
   bouncer: walker,
   flyer: walker,
   boss: walker,
+  hurry: hurryChaser,
 };
 
 function enemyOf(state: GameState, b: BubbleState): EnemyState | undefined {
@@ -153,7 +176,7 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
     (e) => !(e.state === "dead" && (e.onGround || (e.deadTicks ?? 0) >= TUNING.enemyDeathMaxTicks)),
   );
 
-  const living = state.enemies.filter((e) => e.state !== "dead");
+  const living = state.enemies.filter((e) => e.state !== "dead" && e.type !== "hurry");
   const roundLate = state.roundTicks > TUNING.roundAngerTicks;
   for (const e of living) if (living.length === 1 || roundLate) e.angry = true;
 

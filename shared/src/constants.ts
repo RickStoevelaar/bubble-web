@@ -46,6 +46,10 @@ export const TUNING = {
   invulnTicks: 120,
   respawnTicks: 90,
   hurryUpTicks: 3600,
+  /** Length of the round-clear celebration window before the next round loads. */
+  clearTicks: 180,
+  /** Hurry-up chaser speed in px per tick (one axis at a time, ignoring tiles). */
+  hurryChaserSpeed: 0.8,
   roundAngerTicks: 1800,
   /** Enemy body is a square of this many pixels, centered on (x, y). */
   enemySize: 14,
