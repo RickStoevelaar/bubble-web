@@ -54,3 +54,63 @@ export function createFilePersist(dir: string): Persist {
     },
   };
 }
+
+/** One finished run: a team score (co-op household game), the round reached and when it ended. */
+export interface ScoreEntry {
+  names: string[];
+  score: number;
+  round: number;
+  date: string;
+}
+
+export const HIGHSCORE_CAP = 20;
+
+function validEntry(e: unknown): e is ScoreEntry {
+  if (typeof e !== "object" || e === null) return false;
+  const r = e as Partial<ScoreEntry>;
+  return (
+    Array.isArray(r.names) &&
+    r.names.every((n) => typeof n === "string") &&
+    typeof r.score === "number" &&
+    Number.isFinite(r.score) &&
+    typeof r.round === "number" &&
+    Number.isFinite(r.round) &&
+    typeof r.date === "string"
+  );
+}
+
+/** Pure: a new list with `entry` inserted, sorted by score descending (ties: newer first), cut to `cap`. */
+export function insertScore(list: readonly ScoreEntry[], entry: ScoreEntry, cap: number): ScoreEntry[] {
+  // The new entry is the newest by construction, so it goes before existing entries of equal score.
+  const out = [...list];
+  let i = 0;
+  while (i < out.length && out[i]!.score > entry.score) i++;
+  out.splice(i, 0, entry);
+  return out.slice(0, cap);
+}
+
+/**
+ * The high-score table in one JSON file. Every record() re-reads the file and rewrites it atomically in
+ * one synchronous step, so rooms (even holding separate instances) never overwrite each other's entries.
+ */
+export class HighScores {
+  constructor(
+    private file: string,
+    private cap = HIGHSCORE_CAP,
+  ) {}
+
+  list(): ScoreEntry[] {
+    const raw = loadJson<unknown>(this.file, []);
+    if (!Array.isArray(raw)) return [];
+    // Re-sort in case the file was edited by hand: score descending, ties newer first.
+    return raw.filter(validEntry).sort((a, b) => b.score - a.score || (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  }
+
+  record(entry: ScoreEntry): void {
+    saveJson(this.file, insertScore(this.list(), entry, this.cap));
+  }
+}
+
+export function highScoresFile(dir: string): string {
+  return join(dir, "highscores.json");
+}

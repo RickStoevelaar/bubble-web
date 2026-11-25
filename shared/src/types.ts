@@ -49,9 +49,22 @@ export interface ProjectileState {
   kind: "rock" | "flame";
   ageTicks: number;
 }
-/** Placeholder; extended by the items task. */
+export type ItemKind = "food" | "power" | "treasure";
+/** A collectable; (x, y) is the CENTER of the TUNING.itemSize square body. Falls under gravity, then rests. */
 export interface ItemState {
   id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  onGround: boolean;
+  kind: ItemKind;
+  /** Index 0..7 into the eight food/treasure sprites. */
+  sprite: number;
+  /** Score awarded to the collector. */
+  value: number;
+  /** Ticks until the item vanishes. */
+  despawnTicks: number;
 }
 
 /**
@@ -68,6 +81,8 @@ export interface PlayerState {
   state: "alive" | "dying" | "respawning" | "gone";
   lives: number;
   score: number;
+  /** Score at which the next extra life is granted. */
+  nextLifeAt: number;
   fireCooldown: number;
   invulnTicks: number;
   /** Countdown for the "dying" and "respawning" states. */
@@ -100,7 +115,7 @@ export interface GameState {
 }
 
 export type SimEvent = {
-  kind: "jump" | "fire" | "pop" | "bounce" | "die" | "collect" | "clear" | "hurry" | "continue";
+  kind: "jump" | "fire" | "pop" | "bounce" | "die" | "collect" | "oneup" | "clear" | "hurry" | "continue";
   player?: 0 | 1;
   x?: number;
   y?: number;

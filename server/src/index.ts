@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { LEVELS } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { WebSocketServer } from "ws";
-import { createFilePersist, dataDir } from "./persist";
+import { HighScores, createFilePersist, dataDir, highScoresFile } from "./persist";
 import { realTimers } from "./room";
 import type { Timers } from "./room";
 import { RoomManager } from "./rooms";
@@ -57,8 +57,10 @@ function clientIp(req: IncomingMessage, trustProxy: boolean): string {
 
 export async function createServer(config: ServerConfig): Promise<RunningServer> {
   if (!config.pin) throw new Error("PIN is required");
-  const manager = new RoomManager(config.levels ?? loadLevels(), createFilePersist(config.dataDir ?? dataDir()), {
+  const dir = config.dataDir ?? dataDir();
+  const manager = new RoomManager(config.levels ?? loadLevels(), createFilePersist(dir), {
     pin: config.pin,
+    scores: new HighScores(highScoresFile(dir)),
   });
   const staticRoot = config.staticRoot ?? DEFAULT_STATIC_ROOT;
 

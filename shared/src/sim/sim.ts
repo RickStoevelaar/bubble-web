@@ -5,6 +5,8 @@ import { Rng } from "../rng";
 import type { GameState, PlayerState, SimEvent } from "../types";
 import { stepBubbles } from "./bubbles";
 import { stepEnemies } from "./enemies";
+import { repairItems, stepItems } from "./items";
+import { nextLifeThreshold } from "./scoring";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
 
@@ -22,6 +24,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     state: "alive",
     lives: TUNING.startLives,
     score: 0,
+    nextLifeAt: TUNING.firstExtraLifeScore,
     fireCooldown: 0,
     invulnTicks: 0,
     stateTicks: 0,
@@ -118,6 +121,10 @@ export class Sim {
     if (!Number.isFinite(s.phaseTicks)) sim.state.phaseTicks = 0;
     if (typeof s.runOver !== "boolean") sim.state.runOver = false;
     if (!Array.isArray(s.projectiles)) sim.state.projectiles = [];
+    sim.state.items = repairItems(s.items);
+    for (const p of sim.state.players as Partial<PlayerState>[]) {
+      if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
+    }
     // Older saves have no rngState; keep the tick-seeded stream from the constructor.
     if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);
     else sim.state.rngState = sim.rng.getState();
@@ -176,6 +183,7 @@ export class Sim {
     this.loadRound(this.state.round);
     for (const p of this.state.players) {
       p.score = 0;
+      p.nextLifeAt = TUNING.firstExtraLifeScore;
       p.lives = TUNING.startLives;
       p.state = "alive";
       p.stateTicks = 0;
@@ -202,6 +210,7 @@ export class Sim {
     }
     events.push(...stepBubbles(this, buttons));
     events.push(...stepEnemies(this));
+    events.push(...stepItems(this));
     events.push(...stepRound(this));
     this.state.rngState = this.rng.getState();
     return events;

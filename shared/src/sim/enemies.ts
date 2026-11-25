@@ -2,6 +2,7 @@ import { TUNING } from "../constants";
 import type { BubbleState, EnemyState, GameState, SimEvent } from "../types";
 import { killPlayer } from "./combat";
 import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, type Behavior, type EnemySim } from "./enemy-common";
+import { spawnFood } from "./items";
 import { bouncer, flyer } from "./movers";
 import { moveBody } from "./physics";
 import { PLAYER_SIZE } from "./player";
@@ -57,10 +58,10 @@ export function releaseTrapped(state: GameState, b: BubbleState): void {
   resetShooterTimers(e);
 }
 
-/** A player popped the bubble: the enemy dies (arcs away) and the player scores. */
-export function killTrapped(state: GameState, b: BubbleState, playerId: 0 | 1): void {
+/** A player popped the bubble: the enemy dies (arcs away). Returns whether an enemy was killed (scoring is the caller's). */
+export function killTrapped(state: GameState, b: BubbleState): boolean {
   const e = enemyOf(state, b);
-  if (!e || e.state !== "trapped") return;
+  if (!e || e.state !== "trapped") return false;
   e.state = "dead";
   e.x = b.x;
   e.y = b.y;
@@ -68,8 +69,7 @@ export function killTrapped(state: GameState, b: BubbleState, playerId: 0 | 1): 
   e.vy = TUNING.enemyDeathVel;
   e.onGround = false;
   e.deadTicks = 0;
-  const p = state.players[playerId];
-  if (p) p.score += TUNING.enemyPopScore;
+  return true;
 }
 
 /** Advances every enemy one tick, applies anger rules and enemy-player contact. */
@@ -104,9 +104,12 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
         break;
     }
   }
-  state.enemies = state.enemies.filter(
-    (e) => !(e.state === "dead" && (e.onGround || (e.deadTicks ?? 0) >= TUNING.enemyDeathMaxTicks)),
-  );
+  // A dead enemy leaves once its arc ends; each one becomes exactly one food item (array order = id order).
+  state.enemies = state.enemies.filter((e) => {
+    if (e.state !== "dead" || !(e.onGround || (e.deadTicks ?? 0) >= TUNING.enemyDeathMaxTicks)) return true;
+    spawnFood(state, e);
+    return false;
+  });
 
   const living = state.enemies.filter((e) => e.state !== "dead" && e.type !== "hurry");
   const roundLate = state.roundTicks > TUNING.roundAngerTicks;

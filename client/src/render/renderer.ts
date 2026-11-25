@@ -8,6 +8,7 @@ import {
   type BubbleState,
   type EnemyState,
   type GameState,
+  type ItemState,
   type LevelData,
   type PlayerState,
   type ProjectileState,
@@ -56,30 +57,16 @@ export function drawText(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, s: s
   }
 }
 
-/** Items are a placeholder in the shared types for now; read optional fields defensively. */
-interface LooseItem {
-  id: number;
-  x?: number;
-  y?: number;
-  kind?: string;
-}
-
-const TREASURE_ITEMS: readonly ItemName[] = ["item_gem", "item_crown", "item_star"];
-const FOOD_ITEMS: readonly ItemName[] = ["item_plum", "item_cake", "item_fish", "item_pear"];
-
-/** Null for an item kind this client does not know (version skew): the item is skipped. */
-function itemSprite(it: LooseItem): ItemName | null {
+/** Food and treasure pick their sprite by index; an index outside 0..7 (older server) falls back to the id. */
+function itemSprite(it: ItemState): ItemName | null {
   switch (it.kind) {
     case "power":
       return "item_potion";
     case "treasure":
-      return TREASURE_ITEMS[Math.abs(it.id) % TREASURE_ITEMS.length]!;
     case "food":
-      return FOOD_ITEMS[Math.abs(it.id) % FOOD_ITEMS.length]!;
-    case undefined:
-      return ITEM_NAMES[Math.abs(it.id) % ITEM_NAMES.length]!;
+      return ITEM_NAMES[Number.isInteger(it.sprite) && it.sprite >= 0 && it.sprite < ITEM_NAMES.length ? it.sprite : Math.abs(it.id) % ITEM_NAMES.length]!;
     default:
-      return null;
+      return null; // a kind this client does not know (version skew): skipped
   }
 }
 
@@ -279,10 +266,10 @@ export function render(
   const bg = backgroundLayer(sheet, level, theme);
   ctx.drawImage(bg.canvas, 0, 0, FIELD_W, FIELD_H, 0, 0, FIELD_W, FIELD_H);
 
-  for (const it of state.items as LooseItem[]) {
-    if (!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue;
+  for (const it of state.items) {
+    if (!Number.isFinite(it.x) || !Number.isFinite(it.y)) continue; // older servers sent no positions
     const name = itemSprite(it);
-    if (name !== null) drawEx(ctx, sheet, name, 0, it.x!, it.y!);
+    if (name !== null) drawEx(ctx, sheet, name, 0, it.x, it.y);
   }
 
   for (const e of state.enemies) {

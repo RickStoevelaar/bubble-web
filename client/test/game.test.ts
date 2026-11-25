@@ -165,6 +165,23 @@ describe("ClientGame interpolation", () => {
     expect(v.players[1]!.x).toBe(105);
   });
 
+  it("interpolates falling items by id, and leaves items without positions (older servers) alone", () => {
+    const { game, at } = setup();
+    const it = (o: object) => ({ id: 70, x: 100, y: 40, vx: 0, vy: 1, onGround: false, kind: "food", sprite: 1, value: 300, despawnTicks: 100, ...o }) as GameState["items"][number];
+    const a = baseState();
+    a.items = [it({}), it({ id: 71, x: undefined, y: undefined })];
+    const b = baseState();
+    b.items = [it({ y: 60 }), it({ id: 71, x: undefined, y: undefined }), it({ id: 72, x: 5, y: 5 })];
+    at(0);
+    game.onSnapshot(snap(3, 0, a));
+    at(50);
+    game.onSnapshot(snap(6, 0, b));
+    const v = game.viewState(75)!;
+    expect(v.items[0]).toMatchObject({ id: 70, x: 100, y: 50 });
+    expect(v.items[1]!.x).toBeUndefined();
+    expect(v.items[2]).toMatchObject({ id: 72, x: 5, y: 5 });
+  });
+
   it("clamps extrapolation to one snapshot interval and never goes before the oldest snapshot", () => {
     const { game, at } = setup();
     const a = baseState();

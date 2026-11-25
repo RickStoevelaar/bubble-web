@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState, type ProjectileState } from "@bubble/shared";
+import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState, type ItemState, type ProjectileState } from "@bubble/shared";
 import { render } from "../src/render/renderer";
 import type { SpriteName, SpriteSheet } from "../src/render/sprites";
 
@@ -282,5 +282,33 @@ describe("render", () => {
     const before = structuredClone(s);
     render(ctx, sheet, s, [TEST_LEVEL], 0, 5);
     expect(s).toEqual(before);
+  });
+});
+
+describe("items from ItemState", () => {
+  const item = (o: Partial<ItemState>): ItemState => ({
+    id: 40, x: 100, y: 100, vx: 0, vy: 0, onGround: true, kind: "food", sprite: 0, value: 100, despawnTicks: 100, ...o,
+  });
+  const itemNames = (items: ItemState[]) => {
+    const h = harness();
+    const s = demoState();
+    s.items = items;
+    render(h.ctx, h.sheet, s, [TEST_LEVEL], 0);
+    return h.rec.names.map((n) => n.name).filter((n) => n.startsWith("item_"));
+  };
+
+  it("maps food and treasure through the sprite index into the eight item sprites", () => {
+    const all = Array.from({ length: 8 }, (_, i) => item({ id: 50 + i, sprite: i, kind: i === 2 || i === 3 || i === 7 ? "treasure" : "food" }));
+    expect(itemNames(all)).toEqual([
+      "item_plum", "item_cake", "item_gem", "item_crown", "item_fish", "item_pear", "item_potion", "item_star",
+    ]);
+  });
+
+  it("draws power items as the potion regardless of sprite", () => {
+    expect(itemNames([item({ kind: "power", sprite: 0 })])).toEqual(["item_potion"]);
+  });
+
+  it("falls back to an id-based sprite for an out-of-range sprite index (older server)", () => {
+    expect(itemNames([item({ id: 44, sprite: undefined as unknown as number })])).toHaveLength(1);
   });
 });

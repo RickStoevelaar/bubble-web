@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Sim, TEST_LEVEL, type BubbleState, type EnemyState, type GameState } from "@bubble/shared";
+import { Sim, TEST_LEVEL, type BubbleState, type EnemyState, type GameState, type ItemState } from "@bubble/shared";
 import { hasSprite } from "../src/render/sprites";
 import { render } from "../src/render/renderer";
 import { entityEvents, makeHarness } from "./harness";
@@ -18,6 +18,10 @@ const goodEnemy: EnemyState = {
 };
 const goodBubble: BubbleState = {
   id: 2, x: 120, y: 100, vx: 0, vy: 0, kind: "water", phase: "float", ageTicks: 0, owner: 0,
+};
+
+const goodItem: ItemState = {
+  id: 9, x: 40, y: 150, vx: 0, vy: 0, onGround: true, kind: "food", sprite: 0, value: 100, despawnTicks: 100,
 };
 
 function draws(state: GameState): string[] {
@@ -68,9 +72,9 @@ describe("renderer tolerates server/client version skew", () => {
 
   it("skips an item of unknown kind but draws known items", () => {
     const s = base();
-    (s.items as unknown as { id: number; x: number; y: number; kind: string }[]).push(
-      { id: 10, x: 40, y: 150, kind: "mystery" },
-      { id: 11, x: 80, y: 150, kind: "power" },
+    s.items.push(
+      { ...goodItem, id: 10, x: 40, kind: "mystery" as ItemState["kind"] },
+      { ...goodItem, id: 11, x: 80, kind: "power" },
     );
     const log = draws(s);
     expect(log.filter((e) => e.includes("item_")).length).toBe(1);

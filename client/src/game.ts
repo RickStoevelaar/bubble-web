@@ -2,7 +2,6 @@ import {
   stepPlayer,
   type BubbleState,
   type GameState,
-  type ItemState,
   type LevelData,
   type PlayerState,
   type ServerMsg,
@@ -51,12 +50,6 @@ interface Positioned {
   id: number;
   x: number;
   y: number;
-}
-
-/** Items are a placeholder type in shared; they may carry a position. */
-interface LooseItem extends ItemState {
-  x?: number;
-  y?: number;
 }
 
 function findById<T extends { id: number }>(list: T[], id: number): T | undefined {
@@ -265,7 +258,8 @@ export class ClientGame {
       players: this.tween(from.players, s.players, t, (a, c) => a.state !== c.state),
       enemies: this.tween(from.enemies, s.enemies, t, (a, c) => a.state !== c.state),
       bubbles: this.tween(from.bubbles, s.bubbles, t),
-      items: this.tweenItems(from.items, s.items, t),
+      // canTween is false for older servers' items without positions, which then pass through unchanged.
+      items: this.tween(from.items, s.items, t),
       // Older servers send no projectiles.
       ...(s.projectiles ? { projectiles: this.tween(from.projectiles ?? [], s.projectiles, t) } : {}),
     };
@@ -281,16 +275,6 @@ export class ClientGame {
     return to.map((e) => {
       const a = findById(from, e.id);
       return a && this.canTween(a, e) && !(changed?.(a, e) ?? false) ? { ...e, x: lerp(a.x, e.x, t), y: lerp(a.y, e.y, t) } : e;
-    });
-  }
-
-  private tweenItems(from: ItemState[], to: ItemState[], t: number): ItemState[] {
-    if (t === 1) return to;
-    return (to as LooseItem[]).map((e) => {
-      const a = findById(from as LooseItem[], e.id);
-      if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return e;
-      if (!this.canTween(a as Positioned, e as Positioned)) return e;
-      return { ...e, x: lerp(a.x!, e.x!, t), y: lerp(a.y!, e.y!, t) };
     });
   }
 

@@ -3,7 +3,8 @@ import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import { BTN } from "../types";
 import type { BubbleState, GameState, SimEvent } from "../types";
-import { bubbleTouchesEnemy, killTrapped, releaseTrapped, trapEnemy } from "./enemies";
+import { popCascade } from "./chain";
+import { bubbleTouchesEnemy, releaseTrapped, trapEnemy } from "./enemies";
 import { PLAYER_SIZE } from "./player";
 
 const R = TUNING.bubbleRadius;
@@ -153,9 +154,7 @@ export function stepBubbles(
         events.push({ kind: "bounce", player: p.id, x: b.x, y: b.y });
         break;
       }
-      dead.add(b.id);
-      killTrapped(state, b, p.id);
-      events.push({ kind: "pop", player: p.id, x: b.x, y: b.y });
+      popCascade(sim, b, p.id, dead, events);
     }
   }
 

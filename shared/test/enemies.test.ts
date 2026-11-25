@@ -181,7 +181,7 @@ describe("trapping", () => {
     const ev = run(sim, 1);
     expect(ev.some((x) => x.kind === "pop" && x.player === 0)).toBe(true);
     expect(e.state).toBe("dead");
-    expect(p.score).toBe(TUNING.enemyPopScore);
+    expect(p.score).toBe(TUNING.chainBaseScore);
     expect(sim.state.bubbles).toHaveLength(0);
     run(sim, TUNING.enemyDeathMaxTicks + 1);
     expect(sim.state.enemies.some((x) => x.id === e.id)).toBe(false);

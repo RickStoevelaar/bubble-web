@@ -63,8 +63,18 @@ export const TUNING = {
   enemyHopMaxRise: 48,
   /** Horizontal reach (px) within which a player above triggers a hop. */
   enemyHopReach: 48,
-  /** Score awarded to the popping player for a trapped enemy (reworked by the scoring task). */
-  enemyPopScore: 100,
+  /** Score of the first enemy popped in a cascade; the n-th scores base * 2^(n-1), capped at chainMaxScore. */
+  chainBaseScore: 1000,
+  chainMaxScore: 64000,
+  /** Trapped bubbles whose centers are within this many px (about two bubble diameters) pop together. */
+  chainRadius: 28,
+  /** Side length (px) of an item's square body, and how long food lies around before vanishing. */
+  itemSize: 12,
+  foodTtlTicks: 600,
+  /** A life at this score and again every extraLifeStep after it; lives never exceed maxLives. */
+  firstExtraLifeScore: 50000,
+  extraLifeStep: 100000,
+  maxLives: 9,
   /** Initial vy of a dead enemy's arc. */
   enemyDeathVel: -2.5,
   /** Horizontal speed of a dead enemy's arc. */

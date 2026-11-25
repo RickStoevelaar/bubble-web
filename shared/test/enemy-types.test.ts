@@ -604,7 +604,7 @@ describe("shared enemy rules", () => {
       const ev = run(sim, 1);
       expect(ev.some((x) => x.kind === "pop" && x.player === 0)).toBe(true);
       expect(e.state).toBe("dead");
-      expect(p.score).toBe(TUNING.enemyPopScore);
+      expect(p.score).toBe(TUNING.chainBaseScore);
     });
 
     it(`${type}: angry is faster`, () => {

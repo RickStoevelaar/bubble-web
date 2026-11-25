@@ -33,7 +33,14 @@ export const realTimers: Timers = {
   clearTimeout: (h) => clearTimeout(h as NodeJS.Timeout),
 };
 
+/** Where finished runs are recorded. */
+export interface ScoreSink {
+  record(entry: { names: string[]; score: number; round: number; date: string }): void;
+}
+
 export interface RoomOptions {
+  /** High-score table; runs are not recorded when omitted. */
+  scores?: ScoreSink;
   pin: string;
   now?: () => number;
   timers?: Timers;
@@ -143,6 +150,8 @@ export class Room {
   private seats: [Seat?, Seat?] = [];
   private pending: SimEvent[] = [];
   private emptySince?: number;
+  /** True once the current run's score entry is written (or the run was already over when loaded). */
+  private scoreRecorded = false;
   private loop?: unknown;
   private loopStart = 0;
   private loopTicks = 0;
@@ -163,6 +172,7 @@ export class Room {
     if (usableState(saved, levels)) {
       try {
         this.sim = Sim.restore(levels, saved);
+        this.scoreRecorded = this.sim.state.runOver;
       } catch {
         this.sim = undefined; // unusable save: start a fresh run instead
       }
@@ -254,8 +264,31 @@ export class Room {
   private answerContinue(accept: boolean): void {
     const sim = this.sim;
     if (!sim || sim.state.phase !== "gameover" || sim.state.runOver) return;
-    if (accept) this.pending.push(...sim.continueRun());
-    else sim.endRun();
+    if (accept) {
+      this.pending.push(...sim.continueRun());
+      this.scoreRecorded = false;
+    } else {
+      sim.endRun();
+      this.recordRun(sim);
+    }
+  }
+
+  /** Appends this run's team score to the high-score table, once per run. */
+  private recordRun(sim: Sim): void {
+    if (this.scoreRecorded || !sim.state.runOver) return;
+    this.scoreRecorded = true;
+    const score = sim.state.players.reduce((sum, p) => sum + p.score, 0);
+    if (score <= 0) return;
+    const names = this.seats
+      .filter((s): s is Seat => s !== undefined)
+      .map((s) => s.name.trim())
+      .filter((n) => n !== "")
+      .slice(0, 2);
+    try {
+      this.opts.scores?.record({ names, score, round: sim.state.round, date: new Date(this.now()).toISOString() });
+    } catch (err) {
+      console.error(`room ${this.code}: recording high score failed`, err);
+    }
   }
 
   private kick(seat: Seat, sock: SocketLike): void {
@@ -305,6 +338,7 @@ export class Room {
       return;
     }
     this.pending.push(...sim.step([this.seats[0]?.buttons ?? 0, this.seats[1]?.buttons ?? 0]));
+    this.recordRun(sim);
     if (sim.state.tick % SNAPSHOT_EVERY === 0) this.broadcastSnapshot(sim);
   }
 

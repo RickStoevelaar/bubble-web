@@ -79,9 +79,9 @@ export function goldenState(): GameState {
     { id: 11, x: 60, y: 120, vx: 0, vy: 0, kind: "fire", phase: "float", ageTicks: 3, owner: 1 },
     { id: 12, x: 80, y: 40, vx: 0, vy: 0, kind: "letter", letter: 2, phase: "float", ageTicks: 3, owner: 1 },
   ];
-  (s.items as unknown as { id: number; x: number; y: number; kind: string }[]).push(
-    { id: 20, x: 100, y: 180, kind: "food" },
-    { id: 21, x: 130, y: 180, kind: "power" },
+  s.items.push(
+    { id: 20, x: 100, y: 180, vx: 0, vy: 0, onGround: true, kind: "food", sprite: 0, value: 100, despawnTicks: 100 },
+    { id: 21, x: 130, y: 180, vx: 0, vy: 0, onGround: true, kind: "power", sprite: 6, value: 0, despawnTicks: 100 },
   );
   return s;
 }

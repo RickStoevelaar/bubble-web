@@ -11,3 +11,5 @@ export * from "./sim/bubbles";
 export * from "./sim/enemies";
 export * from "./sim/physics";
 export * from "./sim/projectiles";
+export * from "./sim/scoring";
+export * from "./sim/items";
