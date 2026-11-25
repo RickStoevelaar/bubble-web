@@ -82,6 +82,9 @@ export const SECRET_CODE_FRAGMENTS: readonly [string, string, string] = [
   SECRET_ROOMS[2].fragment,
 ];
 
+/** The Super-mode room code: the three fragments joined (six characters, A-Z / 0-9). */
+export const SUPER_CODE: string = SECRET_CODE_FRAGMENTS[0] + SECRET_CODE_FRAGMENTS[1] + SECRET_CODE_FRAGMENTS[2];
+
 /**
  * The layout a state is played on: the secret room while inside one, otherwise the round's level (an
  * out-of-range round falls back to the first). The one level lookup shared by the sim and the client.

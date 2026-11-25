@@ -1,6 +1,8 @@
 import { FIELD_W, TUNING } from "../constants";
 import type { GameState, SimEvent } from "../types";
 import type { LevelData } from "../level";
+import { isBossRound } from "../level";
+import { beginEnding } from "./boss";
 import { maybeSpawnDoor, stepSecret } from "./secret";
 import { clearSpecials } from "./specials";
 
@@ -9,6 +11,11 @@ export interface RoundSim {
   currentLevel: LevelData;
   levels: LevelData[];
   loadRound(n: number): void;
+}
+
+/** Ticks of a round before the hurry-up ghosts come: half as long in Super mode. */
+export function hurryTicks(state: Pick<GameState, "superMode">): number {
+  return state.superMode ? Math.floor(TUNING.hurryUpTicks / 2) : TUNING.hurryUpTicks;
 }
 
 /** Spawns one invincible chaser per player that still has lives. */
@@ -37,6 +44,7 @@ export function stepRound(sim: RoundSim): SimEvent[] {
   const events: SimEvent[] = [];
   const state = sim.state;
 
+  if (state.phase === "ending") return events;
   if (state.players.every((p) => p.state === "gone")) {
     state.phase = "gameover";
     return events;
@@ -48,7 +56,7 @@ export function stepRound(sim: RoundSim): SimEvent[] {
   }
 
   if (state.phase === "round") {
-    if (!state.hurryActive && state.roundTicks >= TUNING.hurryUpTicks) {
+    if (!state.hurryActive && !isBossRound(sim.currentLevel) && state.roundTicks >= hurryTicks(state)) {
       state.hurryActive = true;
       spawnHurryChasers(sim);
       events.push({ kind: "hurry" });
@@ -67,10 +75,8 @@ export function stepRound(sim: RoundSim): SimEvent[] {
   } else if (state.phase === "clearing") {
     const clearTicks = state.items.some((i) => i.kind === "door") ? TUNING.secretDoorClearTicks : TUNING.clearTicks;
     if (++state.phaseTicks >= clearTicks) {
-      if (state.round >= sim.levels.length) {
-        state.phase = "ending";
-        state.runOver = true;
-      } else sim.loadRound(state.round + 1);
+      if (state.round >= sim.levels.length) beginEnding(state);
+      else sim.loadRound(state.round + 1);
     }
   }
   return events;

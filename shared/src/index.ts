@@ -17,3 +17,6 @@ export * from "./sim/powers";
 export * from "./sim/specials";
 export * from "./levels/secret-rooms";
 export * from "./sim/secret";
+export * from "./levels/boss-arena";
+export * from "./sim/boss";
+export * from "./sim/round";

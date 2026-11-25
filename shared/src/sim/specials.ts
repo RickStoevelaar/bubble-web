@@ -1,5 +1,5 @@
 import { FIELD_W, TILE, TUNING } from "../constants";
-import { isSolid } from "../level";
+import { isBossRound, isSolid } from "../level";
 import type { LevelData } from "../level";
 import type { Rng } from "../rng";
 import type { BubbleState, EffectState, EnemyState, GameState, PlayerState, SimEvent } from "../types";
@@ -138,11 +138,11 @@ function pickWeighted(rng: Rng, weights: readonly number[]): number {
 /** Once per tick in phase "round": counts the timer down and, when it hits 0, may float in a special bubble. */
 export function stepSpecialSpawns(sim: SpecialSim): void {
   const state = sim.state;
-  if (state.phase !== "round" || state.secret) return;
+  if (state.phase !== "round" || state.secret || isBossRound(sim.currentLevel)) return;
   if (--state.specialTimer > 0) return;
   const rng = sim.rng;
   state.specialTimer = TUNING.specialIntervalMin + rng.int(TUNING.specialIntervalMax - TUNING.specialIntervalMin);
-  if (state.bubbles.filter((b) => b.kind !== "normal").length >= TUNING.maxSpecialBubbles) return;
+  if (state.bubbles.filter((b) => b.kind !== "normal" && !b.shot).length >= TUNING.maxSpecialBubbles) return;
   const y = TUNING.specialLaneMinY + rng.int(TUNING.specialLaneSpan);
   const x = rng.int(2) === 0 ? TUNING.specialEdgeX : FIELD_W - TUNING.specialEdgeX;
   const flags = sim.currentLevel.flags;

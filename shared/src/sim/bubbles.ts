@@ -7,6 +7,7 @@ import type { BubbleState, GameState, SimEvent } from "../types";
 import { popCascade } from "./chain";
 import { bubbleTouchesEnemy, releaseTrapped, trapEnemy } from "./enemies";
 import { PLAYER_SIZE } from "./player";
+import { stepShots } from "./thunder";
 import { popSpecial, specialInward } from "./specials";
 
 const R = TUNING.bubbleRadius;
@@ -31,7 +32,7 @@ function startFloat(b: BubbleState): void {
 
 /** A launch-phase bubble captures the first active enemy it overlaps and starts floating. */
 function tryTrap(state: GameState, b: BubbleState): void {
-  const e = state.enemies.find((en) => en.state === "active" && en.type !== "hurry" && bubbleTouchesEnemy(b, en));
+  const e = state.enemies.find((en) => en.state === "active" && en.type !== "hurry" && en.type !== "boss" && bubbleTouchesEnemy(b, en));
   if (!e) return;
   trapEnemy(b, e);
   startFloat(b);
@@ -75,7 +76,9 @@ export function stepBubbles(
   const state = sim.state;
   const dead = new Set<number>();
 
+  stepShots(sim, events);
   for (const b of state.bubbles) {
+    if (b.shot) continue; // thunder shots are stepped (and removed) by stepShots
     b.ageTicks++;
     if (b.ageTicks >= (b.kind === "normal" ? TUNING.bubbleLifeTicks : TUNING.specialBubbleLifeTicks)) {
       dead.add(b.id);

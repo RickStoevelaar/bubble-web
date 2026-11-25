@@ -5,6 +5,7 @@ import type { LevelData } from "../level";
 import { Rng } from "../rng";
 import type { GameState, PlayerState, SimEvent } from "../types";
 import { stepBubbles } from "./bubbles";
+import { newBoss, repairBoss } from "./boss";
 import { stepEnemies } from "./enemies";
 import { repairItems, stepItems } from "./items";
 import { maybeSpawnItem, resolvePendingRound } from "./powers";
@@ -98,6 +99,15 @@ function stepPlayerLife(lv: LevelData, p: PlayerState): void {
   }
 }
 
+/** Constructor options (a bare 1 or 2 means just the player count). */
+export interface SimOptions {
+  playerCount: 1 | 2;
+  /** Hard mode: enemies start angry, hurry-up at half time, the boss has more hp. */
+  superMode?: boolean;
+  /** Round to load at construction (default 1, clamped into 1..levels.length). */
+  startRound?: number;
+}
+
 export class Sim {
   state: GameState;
   currentLevel: LevelData;
@@ -106,8 +116,11 @@ export class Sim {
   constructor(
     public levels: LevelData[],
     seed: number,
-    playerCount: 1 | 2,
+    options: 1 | 2 | SimOptions,
   ) {
+    const opts: SimOptions = typeof options === "number" ? { playerCount: options } : options;
+    const playerCount = opts.playerCount;
+    const start = Number.isFinite(opts.startRound) ? Math.min(levels.length, Math.max(1, Math.floor(opts.startRound!))) : 1;
     this.rng = new Rng(seed);
     this.currentLevel = levels[0]!;
     this.state = {
@@ -128,10 +141,13 @@ export class Sim {
       runOver: false,
       pendingRound: 0,
       secret: null,
+      ending: null,
+      endingTicks: 0,
+      superMode: opts.superMode === true,
       nextId: 1,
       rngState: this.rng.getState(),
     };
-    this.loadRound(1);
+    this.loadRound(start);
   }
 
   /**
@@ -152,6 +168,10 @@ export class Sim {
     sim.state.specialTimer = Number.isFinite(s.specialTimer) ? Math.floor(s.specialTimer!) : TUNING.specialFirstDelayTicks;
     sim.state.pendingRound = count(s.pendingRound);
     sim.state.secret = repairSecret(s.secret);
+    sim.state.superMode = s.superMode === true;
+    sim.state.ending = s.ending === "bad" || s.ending === "true" ? s.ending : null;
+    sim.state.endingTicks = count(s.endingTicks);
+    sim.state.enemies = sim.state.enemies.map((e) => (e.type === "boss" ? repairBoss(e, sim.state) : e));
     sim.currentLevel = levelForState(levels, sim.state);
     for (const p of sim.state.players as Partial<PlayerState>[]) {
       if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
@@ -182,19 +202,22 @@ export class Sim {
     this.state.hurryActive = false;
     this.state.enemiesSeen = false;
     this.state.phaseTicks = 0;
-    this.state.enemies = lv.enemies.map((s) => ({
-      id: this.state.nextId++,
-      type: s.type,
-      x: s.col * TILE + TILE / 2,
-      y: (s.row + 1) * TILE - TUNING.enemySize / 2,
-      vx: 0,
-      vy: 0,
-      dir: 1,
-      state: "spawning",
-      angry: false,
-      spawnDelay: s.delayTicks,
-      onGround: false,
-    }));
+    this.state.enemies = lv.enemies.map((s) => {
+      if (s.type === "boss") return newBoss(this.state, s);
+      return {
+        id: this.state.nextId++,
+        type: s.type,
+        x: s.col * TILE + TILE / 2,
+        y: (s.row + 1) * TILE - TUNING.enemySize / 2,
+        vx: 0,
+        vy: 0,
+        dir: 1,
+        state: "spawning" as const,
+        angry: this.state.superMode, // Super mode: everything starts angry
+        spawnDelay: s.delayTicks,
+        onGround: false,
+      };
+    });
     this.state.bubbles = [];
     this.state.items = [];
     this.state.projectiles = [];
@@ -216,7 +239,6 @@ export class Sim {
   /** Free continue after game over: scores reset, lives restored, same round reloaded. Throws outside "gameover". */
   continueRun(): SimEvent[] {
     if (this.state.phase !== "gameover" || this.state.runOver) throw new Error("continueRun is only valid in phase gameover");
-    this.loadRound(this.state.round);
     for (const p of this.state.players) {
       p.score = 0;
       p.nextLifeAt = TUNING.firstExtraLifeScore;
@@ -231,6 +253,7 @@ export class Sim {
       p.letters = newLetters();
       p.deathlessSince = this.state.round;
     }
+    this.loadRound(this.state.round); // after the revival: the boss's hp counts the players present
     this.state.pendingRound = 0;
     return [{ kind: "continue" }];
   }
@@ -245,6 +268,7 @@ export class Sim {
   step(buttons: [number, number]): SimEvent[] {
     const events: SimEvent[] = [];
     this.state.tick++;
+    if (this.state.phase === "ending") this.state.endingTicks++; // the cutscene clock runs while everything else is frozen
     if (this.state.runOver || this.state.phase === "gameover" || this.state.phase === "ending") return events;
     if (this.state.phase === "round" && !this.state.secret) this.state.roundTicks++;
     for (const p of this.state.players) {

@@ -1,7 +1,8 @@
 import { TUNING } from "../constants";
 import type { BubbleState, EnemyState, GameState, SimEvent } from "../types";
+import { bossBehavior } from "./boss";
 import { killPlayer } from "./combat";
-import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, startDeath, type Behavior, type EnemySim } from "./enemy-common";
+import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, enemySize, startDeath, type Behavior, type EnemySim } from "./enemy-common";
 import { spawnFood } from "./items";
 import { bouncer, flyer } from "./movers";
 import { moveBody } from "./physics";
@@ -12,7 +13,7 @@ import { chaser, hurryChaser, walker } from "./walker";
 
 export type { EnemySim } from "./enemy-common";
 
-/** Per-type behavior table. `boss` stays a walker until its own task. */
+/** Per-type behavior table. */
 export const ENEMY_BEHAVIORS: Record<EnemyState["type"], Behavior> = {
   walker,
   chaser,
@@ -20,7 +21,7 @@ export const ENEMY_BEHAVIORS: Record<EnemyState["type"], Behavior> = {
   breather,
   bouncer,
   flyer,
-  boss: walker,
+  boss: bossBehavior,
   hurry: hurryChaser,
 };
 
@@ -107,15 +108,16 @@ export function stepEnemies(sim: EnemySim): SimEvent[] {
     return false;
   });
 
-  const living = state.enemies.filter((e) => e.state !== "dead" && e.type !== "hurry");
+  // The boss is exempt from both anger rules (last enemy standing, round time); it enrages from hp instead.
+  const living = state.enemies.filter((e) => e.state !== "dead" && e.type !== "hurry" && e.type !== "boss");
   const roundLate = state.roundTicks > TUNING.roundAngerTicks;
   for (const e of living) if (living.length === 1 || roundLate) e.angry = true;
 
-  const reach = (SIZE + PLAYER_SIZE) / 2;
   for (const p of state.players) {
     if (p.state !== "alive" || p.invulnTicks > 0) continue;
     for (const e of state.enemies) {
       if (e.state !== "active") continue;
+      const reach = (enemySize(e) + PLAYER_SIZE) / 2;
       if (Math.abs(e.x - p.x) < reach && Math.abs(e.y - p.y) < reach) {
         killPlayer(p, events, state.round);
         break;

@@ -42,6 +42,11 @@ export function solidAtPixel(lv: LevelData, px: number, py: number): boolean {
   return isSolid(lv, Math.floor(px / TILE), Math.floor(py / TILE));
 }
 
+/** True for a level whose enemy list holds the final boss: players fire thunder shots there. */
+export function isBossRound(lv: LevelData): boolean {
+  return lv.enemies.some((e) => e.type === "boss");
+}
+
 /** Returns [] when the level is valid, otherwise human-readable problems. */
 export function validateLevel(lv: LevelData): string[] {
   const problems: string[] = [];

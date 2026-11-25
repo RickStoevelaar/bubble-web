@@ -588,7 +588,7 @@ describe("flyer", () => {
 });
 
 describe("shared enemy rules", () => {
-  const types = ["walker", "chaser", "thrower", "breather", "bouncer", "flyer", "boss"] as const;
+  const types = ["walker", "chaser", "thrower", "breather", "bouncer", "flyer"] as const; // the boss cannot be trapped and is not anger-scaled: see boss.test.ts
 
   for (const type of types) {
     it(`${type}: can be trapped by a launch bubble and popped`, () => {
@@ -622,8 +622,7 @@ describe("shared enemy rules", () => {
         return travelled(sim, e, 20);
       };
       const ratio = dist(true) / dist(false);
-      if (type === "boss") expect(ratio).toBeCloseTo(TUNING.angerSpeedMult, 3);
-      else expect(ratio).toBeGreaterThan(1.3);
+      expect(ratio).toBeGreaterThan(1.3);
     });
 
     it(`${type}: spawning, trapped and dead enemies neither move nor shoot`, () => {

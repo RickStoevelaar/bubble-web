@@ -2,6 +2,7 @@ import { FIELD_W, GRID_H, TILE, TUNING } from "../constants";
 import { SECRET_ROOMS, levelForState } from "../levels/secret-rooms";
 import type { LevelData } from "../level";
 import type { GameState, ItemState, PlayerState, SecretState, SimEvent } from "../types";
+import { beginEnding } from "./boss";
 import { platformSpots } from "./powers";
 import { clearSpecials } from "./specials";
 
@@ -128,8 +129,7 @@ function leaveSecret(sim: SecretSim, events: SimEvent[]): void {
     sim.currentLevel = levelForState(sim.levels, state);
     state.items = [];
     state.bubbles = [];
-    state.phase = "ending";
-    state.runOver = true;
+    beginEnding(state);
   } else sim.loadRound(ret + 1);
 }
 

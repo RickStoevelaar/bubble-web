@@ -42,3 +42,8 @@ export function startDeath(e: EnemyState): void {
   e.onGround = false;
   e.deadTicks = 0;
 }
+
+/** Side length of an enemy body: the boss is bigger than everything else. */
+export function enemySize(e: EnemyState): number {
+  return e.type === "boss" ? TUNING.bossSize : ENEMY_SIZE;
+}

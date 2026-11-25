@@ -24,6 +24,12 @@ export interface EnemyState {
   cooldown?: number;
   /** Shooters only: ticks of wind-up left (stopped and facing the target); 0/unset when not winding up. */
   windup?: number;
+  /** Boss only (all five are set together by the boss factory): hit points left and at the start, hit-stagger ticks left, ticks to the next volley, volleys thrown. */
+  hp?: number;
+  maxHp?: number;
+  stun?: number;
+  volley?: number;
+  volleyIndex?: number;
 }
 export interface BubbleState {
   id: number;
@@ -38,6 +44,8 @@ export interface BubbleState {
   ageTicks: number;
   trapped?: { type: EnemyType; escapeIn: number; enemyId: number };
   owner: 0 | 1;
+  /** A thunder shot (boss rounds): flies straight in the launch phase, hurts only the boss, never floats, traps or pops. Always the last key. */
+  shot?: true;
 }
 /** A rock (arcs under gravity) or flame (straight, limited range) shot by an enemy; (x, y) is its center. */
 export interface ProjectileState {
@@ -167,6 +175,12 @@ export interface GameState {
   pendingRound: number;
   /** Non-null while the players are inside a secret treasure room. */
   secret: SecretState | null;
+  /** Which ending the run reached (set exactly when phase becomes "ending"; true iff two seats were both present). */
+  ending: "bad" | "true" | null;
+  /** Ticks since the ending began; keeps counting while the rest of the sim is frozen. */
+  endingTicks: number;
+  /** Hard mode: enemies start angry, hurry-up comes at half time, the boss has more hp. */
+  superMode: boolean;
   /** mulberry32 state of Sim.rng, synced at the end of every step so restore resumes the stream. */
   rngState: number;
 }

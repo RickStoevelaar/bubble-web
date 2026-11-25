@@ -184,4 +184,24 @@ export const TUNING = {
   secretRoomTicks: 900,
   secretTreasureCount: 40,
   secretLeaveDelayTicks: 60,
+
+  /** Boss: body size (px), hp = base + perPlayer x players present when the round loads (x superHpMult in Super mode), speed per axis, and the enrage (hp <= maxHp / 3) multipliers. */
+  bossSize: 48,
+  bossHpBase: 60,
+  bossHpPerPlayer: 40,
+  bossSuperHpMult: 2,
+  bossSpeed: 0.5,
+  bossEnrageSpeedMult: 1.5,
+  bossEnrageVolleyMult: 0.5,
+  /** Ticks between volleys, rocks per volley, and the fixed horizontal speed offset of each rock of the fan (indexed by rock). */
+  bossVolleyTicks: 120,
+  bossVolleySize: 3,
+  bossFanOffsets: [-0.6, 0, 0.6] as readonly number[],
+  /** Hit stagger: ticks the boss freezes (and cannot be hurt again) after a thunder shot lands. */
+  bossStunTicks: 20,
+  bossHitScore: 500,
+  bossKillScore: 50000,
+  /** Thunder shots (every bubble in a boss round): px per tick and ticks of travel. */
+  thunderShotSpeed: 4,
+  thunderShotTicks: 40,
 } as const;

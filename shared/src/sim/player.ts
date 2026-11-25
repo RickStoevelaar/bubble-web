@@ -1,4 +1,5 @@
 import { TUNING } from "../constants";
+import { isBossRound } from "../level";
 import type { LevelData } from "../level";
 import { BTN } from "../types";
 import type { BubbleState, PlayerState, SimEvent } from "../types";
@@ -36,18 +37,22 @@ export function stepPlayer(
   }
 
   if ((buttons & BTN.F) !== 0 && p.fireCooldown === 0) {
-    const launch = TUNING.bubbleLaunchSpeed * (p.powers.fastBubble ? TUNING.fastBubbleMult : 1);
-    sim.state.bubbles.push({
+    // In a boss round every bubble is a thunder shot (same spawn rules, own speed and a trailing "shot" marker).
+    const shot = isBossRound(lv);
+    const launch = (shot ? TUNING.thunderShotSpeed : TUNING.bubbleLaunchSpeed) * (p.powers.fastBubble ? TUNING.fastBubbleMult : 1);
+    const b: BubbleState = {
       id: sim.state.nextId++,
       x: p.x + p.facing * TUNING.bubbleSpawnOffset,
       y: p.y,
       vx: p.facing * launch,
       vy: 0,
-      kind: "normal",
+      kind: shot ? "lightning" : "normal",
       phase: "launch",
       ageTicks: 0,
       owner: p.id,
-    });
+    };
+    if (shot) b.shot = true;
+    sim.state.bubbles.push(b);
     p.fireCooldown = Math.round(TUNING.fireCooldownTicks * (p.powers.rapidFire ? 0.5 : 1));
     counters.bubbles++;
     events.push({ kind: "fire", player: p.id, x: p.x, y: p.y });
