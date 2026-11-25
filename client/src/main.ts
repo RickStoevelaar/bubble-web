@@ -1,6 +1,10 @@
 import { FIELD_H, FIELD_W, LEVELS } from "@bubble/shared";
 import { ClientGame } from "./game";
-import { KeyboardInput } from "./input";
+import { GamepadInput } from "./input/gamepad";
+import { CombinedInput, KeyboardInput } from "./input/input";
+import { TouchDeck, TouchTracker, computeTouchZones } from "./input/touch";
+import { TouchInput } from "./input/touch-dom";
+import { DeckView } from "./input/touch-view";
 import { Connection, NetError, type ConnState } from "./net";
 import { Sampler, watchLifecycle } from "./sampler";
 import { viewOf, type ShownError } from "./status";
@@ -48,30 +52,56 @@ function boot(): void {
   const ctx: CanvasRenderingContext2D = maybeCtx;
   const sheet = buildSheet(document);
 
+  const overlay = el<HTMLElement>("join");
+
+  // Touch: the tracker/deck exist from boot so every layout recompute can re-zone them, but touches
+  // are only handled once the join overlay is gone (the form must keep working).
+  const deckModel = new TouchDeck(null);
+  const tracker = new TouchTracker(deckModel);
+  const deckView = new DeckView(deck, deckModel);
+  let seenTouch = false;
+  const coarse = window.matchMedia("(pointer: coarse)");
+  const touch = new TouchInput(window, tracker, {
+    isEnabled: () => overlay.hidden,
+    onTouch: () => {
+      seenTouch = true;
+      layout();
+    },
+  });
+  /** Bottom inset (iOS home indicator) via the #safe probe, whose padding is env(safe-area-inset-bottom). */
+  const safeBottom = (): number => parseFloat(getComputedStyle(el("safe")).paddingBottom) || 0;
+
   const layout = () => {
     const dpr = window.devicePixelRatio || 1;
-    const l = computeLayout(window.innerWidth, window.innerHeight, dpr);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const l = computeLayout(w, h, dpr);
     canvas.width = FIELD_W * l.scale;
     canvas.height = FIELD_H * l.scale;
     canvas.style.left = `${l.gameX}px`;
     canvas.style.top = `${l.gameY}px`;
     canvas.style.width = `${l.fieldW}px`;
     canvas.style.height = `${l.fieldH}px`;
-    if (l.deckRect) {
-      const r = l.deckRect;
-      deck.style.display = "block";
-      Object.assign(deck.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.width}px`, height: `${r.height}px` });
-    } else {
-      deck.style.display = "none";
-    }
     ctx.setTransform(l.scale, 0, 0, l.scale, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    const zones = computeTouchZones(l, w, h, coarse.matches || seenTouch, safeBottom());
+    touch.setZones(zones); // releases held touches if the zones moved under them (rotation)
+    const box = zones ? (l.mode === "portrait" ? l.deckRect : { x: 0, y: 0, width: w, height: h }) : null;
+    deckView.setLayout(box, dpr, l.mode !== "portrait");
+  };
+  /** Zoom or a move to another monitor changes devicePixelRatio without a resize event. */
+  const watchDpr = (): void => {
+    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    mq.addEventListener("change", () => {
+      layout();
+      watchDpr();
+    }, { once: true });
   };
   window.addEventListener("resize", layout);
   window.addEventListener("orientationchange", layout);
+  watchDpr();
   layout();
 
-  const overlay = el<HTMLElement>("join");
   const form = el<HTMLFormElement>("join-form");
   const roomInput = el<HTMLInputElement>("room");
   const pinInput = el<HTMLInputElement>("pin");
@@ -126,7 +156,7 @@ function boot(): void {
   function startLoop(): void {
     if (looping) return;
     looping = true;
-    const input = new KeyboardInput(window);
+    const input = new CombinedInput([new KeyboardInput(window), new GamepadInput(), touch]);
     const sampler = new Sampler({
       input,
       nextSeq: () => conn.nextInputSeq(),
@@ -138,6 +168,7 @@ function boot(): void {
 
     const frame = (now: number): void => {
       sampler.frame(now);
+      deckView.render(touch.pressed);
       const view = game?.viewState(now);
       if (game && view) render(ctx, sheet, view, LEVELS, game.localPlayer);
       requestAnimationFrame(frame);

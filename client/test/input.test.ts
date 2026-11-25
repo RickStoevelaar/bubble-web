@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BTN } from "@bubble/shared";
-import { KeyboardInput } from "../src/input";
+import { KeyboardInput } from "../src/input/input";
 
 function fakeWindow() {
   const handlers = new Map<string, Set<(e: unknown) => void>>();

@@ -1,5 +1,5 @@
 import { TICK_RATE } from "@bubble/shared";
-import type { InputSource } from "./input";
+import type { InputSource } from "./input/input";
 
 const TICK_MS = 1000 / TICK_RATE;
 /** After a stall run at most this many catch-up ticks instead of a burst. */
@@ -70,6 +70,16 @@ export function watchLifecycle(
 ): () => void {
   let focused = true;
   const report = (): void => onActive(!doc.hidden && focused);
+  // iOS Safari can blur without a matching focus (and bfcache restores fire neither): coming back
+  // visible or being shown again is proof enough that the page is usable.
+  const onVisible = (): void => {
+    if (!doc.hidden) focused = true;
+    report();
+  };
+  const onPageShow = (): void => {
+    focused = true;
+    report();
+  };
   const onBlur = (): void => {
     focused = false;
     report();
@@ -79,14 +89,16 @@ export function watchLifecycle(
     report();
   };
   const onPageHide = (): void => onActive(false);
-  doc.addEventListener("visibilitychange", report);
+  doc.addEventListener("visibilitychange", onVisible);
   win.addEventListener("blur", onBlur);
   win.addEventListener("focus", onFocus);
   win.addEventListener("pagehide", onPageHide);
+  win.addEventListener("pageshow", onPageShow);
   return () => {
-    doc.removeEventListener("visibilitychange", report);
+    doc.removeEventListener("visibilitychange", onVisible);
     win.removeEventListener("blur", onBlur);
     win.removeEventListener("focus", onFocus);
     win.removeEventListener("pagehide", onPageHide);
+    win.removeEventListener("pageshow", onPageShow);
   };
 }

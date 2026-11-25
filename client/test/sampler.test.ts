@@ -110,7 +110,7 @@ describe("watchLifecycle", () => {
     expect(t.handlers.size).toBe(0);
   });
 
-  it("stays inactive when visible again but not focused", () => {
+  it("recovers when blur is never followed by focus: visible again (visibilitychange or pageshow) reactivates", () => {
     const t = targets();
     const states: boolean[] = [];
     watchLifecycle(t.win, t.doc, (a) => states.push(a));
@@ -119,6 +119,30 @@ describe("watchLifecycle", () => {
     t.fire("visibilitychange");
     t.doc.hidden = false;
     t.fire("visibilitychange");
-    expect(states[states.length - 1]).toBe(false);
+    expect(states).toEqual([false, false, true]);
+    t.fire("blur");
+    t.fire("pagehide");
+    t.fire("pageshow"); // bfcache restore: no focus event follows on iOS
+    expect(states[states.length - 1]).toBe(true);
+  });
+
+  it("a sampler driven through blur -> visible keeps a monotonic seq and samples again", () => {
+    const { sampler, sent } = setup();
+    const t = targets();
+    watchLifecycle(t.win, t.doc, (a) => sampler.setActive(a));
+    sampler.frame(0);
+    sampler.frame(TICK + 1);
+    t.fire("blur"); // one zero input goes out
+    t.doc.hidden = true;
+    t.fire("visibilitychange");
+    t.doc.hidden = false;
+    t.fire("visibilitychange"); // no focus event
+    sampler.frame(1000);
+    sampler.frame(1000 + TICK * 2 + 1);
+    const seqs = sent.map(([s]) => s);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
+    expect(sent[sent.length - 1]![1]).toBe(BTN.R);
+    expect(sent.length).toBeGreaterThanOrEqual(4);
   });
 });

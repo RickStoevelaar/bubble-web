@@ -1,6 +1,6 @@
 // Bundles src/main.ts to dist/main.js and copies index.html.
 // Usage: node client/build.mjs [--watch] [--serve]
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, watch as fsWatch } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
@@ -25,7 +25,18 @@ const options = {
 
 const ctx = await esbuild.context(options);
 if (watch || serve) {
-  if (watch) await ctx.watch();
+  if (watch) {
+    await ctx.watch();
+    // esbuild only watches the bundle: re-copy index.html when it changes.
+    fsWatch(join(root, "index.html"), () => {
+      try {
+        copyFileSync(join(root, "index.html"), join(dist, "index.html"));
+        console.log("index.html copied");
+      } catch (err) {
+        console.error("index.html copy failed:", err);
+      }
+    });
+  }
   if (serve) {
     const { host, port } = await ctx.serve({ servedir: dist, port: 8080 });
     console.log(`serving http://${host === "0.0.0.0" ? "localhost" : host}:${port}/`);

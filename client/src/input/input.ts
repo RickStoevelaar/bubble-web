@@ -63,3 +63,18 @@ export class KeyboardInput implements InputSource {
     this.down.clear();
   }
 }
+
+/** ORs several sources (keyboard | gamepad | touch): the game does not care where input comes from. */
+export class CombinedInput implements InputSource {
+  constructor(private readonly sources: readonly InputSource[]) {}
+
+  sample(): number {
+    let m = 0;
+    for (const s of this.sources) m |= s.sample();
+    return m;
+  }
+
+  reset(): void {
+    for (const s of this.sources) s.reset?.();
+  }
+}
