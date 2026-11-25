@@ -28,8 +28,14 @@ import { bridges } from "./bridges";
 import { canyon } from "./canyon";
 import { chambers } from "./chambers";
 import { zigzag } from "./zigzag";
+import { zipper } from "./zipper";
+import { cross } from "./cross";
+import { fortress } from "./fortress";
+import { fangs } from "./fangs";
+import { chimneys } from "./chimneys";
+import { splitkeep } from "./splitkeep";
 
 /** Every template by name. Add new families here. */
 export const TEMPLATES: Record<string, Template> = Object.fromEntries(
-  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring, shafts, moat, diamond, nests, rails, slashes, hooks, courtyard, spiral, lanterns, bridges, canyon, chambers].map((t) => [t.name, t]),
+  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring, shafts, moat, diamond, nests, rails, slashes, hooks, courtyard, spiral, lanterns, bridges, canyon, chambers, zipper, cross, fortress, fangs, chimneys, splitkeep].map((t) => [t.name, t]),
 );

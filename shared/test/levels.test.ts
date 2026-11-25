@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { GAME_LEVELS, GRID_H, GRID_W, isSolid, lintRamp, playerSpawnTiles, validateLevel } from "../src";
+import { BOSS_ARENA, GAME_LEVELS, GRID_H, GRID_W, isSolid, lintRamp, playerSpawnTiles, validateLevel } from "../src";
 import { BATCHES } from "./support/batches";
 
 // The slow per-level work lives in per-batch files so vitest runs them in parallel workers:
-// levels-lint-*.test.ts (lint), levels-smoke-*.test.ts (sim) and levels-doors.test.ts (secret doors).
+// levels-lint-*.test.ts (lint) and levels-smoke-*.test.ts (sim), about twelve rounds per file, plus levels-doors.test.ts (secret doors).
 
 describe("GAME_LEVELS", () => {
-  it("holds every registered batch, contiguous from round 1", () => {
+  it("holds every registered batch, contiguous from round 1, and exactly 100 levels (round 100 is the boss arena)", () => {
     expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(BATCHES[BATCHES.length - 1]!.to);
+    expect(GAME_LEVELS).toHaveLength(100);
     GAME_LEVELS.forEach((lv, i) => expect(lv.round).toBe(i + 1));
+    expect(GAME_LEVELS[99]).toEqual(BOSS_ARENA);
+    expect(GAME_LEVELS.filter((lv) => lv.enemies.some((e) => e.type === "boss")).map((lv) => lv.round)).toEqual([100]);
   });
 
   it("validateLevel is clean and every grid is 32x28", () => {

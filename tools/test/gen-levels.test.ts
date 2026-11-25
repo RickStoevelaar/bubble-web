@@ -77,7 +77,7 @@ describe("template library", () => {
 
   it("every template also satisfies the invariants with the parameters rounds 1-25 actually use", () => {
     for (const r of ROUNDS) {
-      if (r.tiles) continue;
+      if (r.tiles || r.boss) continue;
       const rows = TEMPLATES[r.template]!.build(r.params, new Rng(r.seed ?? r.round * 1009 + 17));
       expect(() => assertGrid(rows, `round ${r.round}`), `round ${r.round}`).not.toThrow();
     }
@@ -109,13 +109,15 @@ describe("round data (batch 1: rounds 1-25)", () => {
     expect(ROUNDS.length).toBeGreaterThanOrEqual(BATCHES[0]!.to);
     ROUNDS.forEach((r, i) => {
       expect(r.round).toBe(i + 1);
-      expect(r.theme).toBe(Math.floor((r.round - 1) / 10));
+      // Round 100 is the boss arena, which carries its own theme (11).
+      if (!r.boss) expect(r.theme).toBe(Math.floor((r.round - 1) / 10));
     });
   });
 
   it("every round names a known template or is hand-drawn", () => {
     for (const r of ROUNDS) {
-      if (r.tiles) expect(r.template).toBe("hand");
+      if (r.boss) expect(r.template).toBe("boss");
+      else if (r.tiles) expect(r.template).toBe("hand");
       else expect(Object.keys(TEMPLATES), `round ${r.round}`).toContain(r.template);
     }
   });

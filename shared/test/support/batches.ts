@@ -19,7 +19,7 @@ export interface Batch {
   /** Rounds that must be hand-drawn, and the minimum count of hand-drawn rounds overall. */
   handRounds: number[];
   handMin: number;
-  enemyCount: { min: number; max: number; startAvg: [number, number]; endAvg: [number, number] };
+  enemyCount: { min: number; max: number; startAvg: [number, number]; endAvg: [number, number]; /** The cap is reached early and held: the middle five rounds may average as much as the last five (default: strictly less). */ plateau?: boolean };
   /** Milestone rounds whose enemy count must lie in `milestone`. */
   milestones?: { rounds: number[]; count: [number, number] };
   /** Minimum distinct types in every round, and minimum number of rounds each type must appear in. */
@@ -29,8 +29,12 @@ export interface Batch {
   toughShift?: { early: number; late: number; lateMin: number };
   /** Rounds with 2-3 distinct spawn delays, each wave holding at least 2 enemies. */
   waves?: number;
-  /** Most distinct spawn delays a wave round may use (default 3; rounds 51-75 allow 4). */
+  /** Most distinct spawn delays a wave round may use (default 3; rounds 51-75 and 76-99 allow 4). */
   maxWaveCount?: number;
+  /** At least this many different wave-delay patterns (the sorted distinct delays, like 0/120/240) among the wave rounds. */
+  wavePatterns?: number;
+  /** No identical enemy mix (counts per type) in more than this many rounds of the batch. */
+  maxSameMix?: number;
   flags?: { noFlag: number; perFlag: [number, number]; singleBefore: number; twoFlagFrom: number; twoFlagMin: number };
   /** Rounds with drift of at least `cells` cells. */
   drift: { rounds: number; cells: number };
@@ -83,7 +87,7 @@ export const BATCHES: Batch[] = [
     freshUsed: 6,
     handRounds: [60, 70, 75],
     handMin: 4,
-    enemyCount: { min: 9, max: 12, startAvg: [9, 10.2], endAvg: [11, 12] },
+    enemyCount: { min: 9, max: 12, startAvg: [9.3, 10.2], endAvg: [11, 12] },
     milestones: { rounds: [60, 70, 75], count: [11, 12] },
     typesPerRound: 4,
     typeRounds: 15,
@@ -91,6 +95,29 @@ export const BATCHES: Batch[] = [
     waves: 12,
     maxWaveCount: 4,
     flags: { noFlag: 6, perFlag: [4, 8], singleBefore: 56, twoFlagFrom: 56, twoFlagMin: 8 },
+    drift: { rounds: 5, cells: 8 },
+    fairness: true,
+  },
+  {
+    name: "rounds 76-99",
+    from: 76,
+    to: 99,
+    sha256: "fcefa3041a46bb6b964bb7b121f7909a367684dde89d16fc0634c8a840c244e9",
+    freshTemplates: ["zipper", "cross", "fortress", "fangs", "chimneys", "splitkeep"],
+    distinctTemplates: 14,
+    freshUsed: 6,
+    handRounds: [80, 90, 99],
+    handMin: 4,
+    enemyCount: { min: 10, max: 12, startAvg: [10.2, 11], endAvg: [12, 12], plateau: true },
+    milestones: { rounds: [80, 90, 99], count: [11, 12] },
+    typesPerRound: 4,
+    typeRounds: 18,
+    toughShift: { early: 10, late: 10, lateMin: 0.65 },
+    waves: 14,
+    maxWaveCount: 4,
+    wavePatterns: 4,
+    maxSameMix: 2,
+    flags: { noFlag: 4, perFlag: [5, 9], singleBefore: 76, twoFlagFrom: 76, twoFlagMin: 12 },
     drift: { rounds: 5, cells: 8 },
     fairness: true,
   },

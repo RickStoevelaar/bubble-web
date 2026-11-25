@@ -16,6 +16,12 @@ const TOUGH = new Set(["thrower", "breather", "bouncer", "flyer"]);
 const FLAGS = ["waterBubbles", "fireBubbles", "lightningBubbles"] as const;
 const avg = (a: number[]): number => a.reduce((s, v) => s + v, 0) / a.length;
 const flagCount = (lv: LevelData): number => Object.values(lv.flags ?? {}).filter(Boolean).length;
+/** Enemies per spawn delay of one level. */
+const delaysOf = (l: LevelData): Map<number, number> => {
+  const by = new Map<number, number>();
+  for (const e of l.enemies) by.set(e.delayTicks, (by.get(e.delayTicks) ?? 0) + 1);
+  return by;
+};
 const sha = (levels: unknown[]): string => createHash("sha256").update(JSON.stringify(levels)).digest("hex");
 
 export interface BatchSource {
@@ -76,7 +82,8 @@ export function describeBatchData(batch: Batch, src: BatchSource = {}): void {
       expect(end).toBeGreaterThanOrEqual(c.endAvg[0]);
       expect(end).toBeLessThanOrEqual(c.endAvg[1]);
       expect(start).toBeLessThan(mid);
-      expect(mid).toBeLessThan(end);
+      if (c.plateau) expect(mid).toBeLessThanOrEqual(end);
+      else expect(mid).toBeLessThan(end);
       for (const r of batch.milestones?.rounds ?? []) {
         expect(counts[r - batch.from], `milestone ${r}`).toBeGreaterThanOrEqual(batch.milestones!.count[0]);
         expect(counts[r - batch.from], `milestone ${r}`).toBeLessThanOrEqual(batch.milestones!.count[1]);
@@ -100,13 +107,29 @@ export function describeBatchData(batch: Batch, src: BatchSource = {}): void {
     }
 
     if (batch.waves !== undefined) {
+      const waveRounds = levels.filter((l) => {
+        const by = delaysOf(l);
+        return by.size >= 2 && by.size <= (batch.maxWaveCount ?? 3) && [...by.values()].every((k) => k >= 2);
+      });
       it("enough rounds spawn in two or three waves (2-3, for some batches up to 4, distinct delays, each wave with several enemies)", () => {
-        const waves = levels.filter((l) => {
-          const by = new Map<number, number>();
-          for (const e of l.enemies) by.set(e.delayTicks, (by.get(e.delayTicks) ?? 0) + 1);
-          return by.size >= 2 && by.size <= (batch.maxWaveCount ?? 3) && [...by.values()].every((k) => k >= 2);
+        expect(waveRounds.length).toBeGreaterThanOrEqual(batch.waves!);
+      });
+      if (batch.wavePatterns !== undefined) {
+        it("the wave rounds use several different wave-delay patterns", () => {
+          const patterns = new Set(waveRounds.map((l) => [...delaysOf(l).keys()].sort((a, b) => a - b).join("/")));
+          expect(patterns.size, [...patterns].join(" | ")).toBeGreaterThanOrEqual(batch.wavePatterns!);
         });
-        expect(waves.length).toBeGreaterThanOrEqual(batch.waves!);
+      }
+    }
+
+    if (batch.maxSameMix !== undefined) {
+      it("no identical enemy mix (counts per type) appears in more than the allowed number of rounds", () => {
+        const byMix = new Map<string, number[]>();
+        for (const l of levels) {
+          const key = TYPES.map((t) => l.enemies.filter((e) => e.type === t).length).join("-");
+          byMix.set(key, [...(byMix.get(key) ?? []), l.round]);
+        }
+        for (const [mix, rounds] of byMix) expect(rounds.length, `mix ${mix} in rounds ${rounds.join(", ")}`).toBeLessThanOrEqual(batch.maxSameMix!);
       });
     }
 

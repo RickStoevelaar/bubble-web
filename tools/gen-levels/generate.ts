@@ -1,4 +1,4 @@
-import { Rng } from "@bubble/shared";
+import { BOSS_ARENA, Rng } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { assertGrid } from "./invariants";
 import { expandDrift, placeEnemies } from "./place";
@@ -10,6 +10,10 @@ const FLAG_ORDER = ["waterBubbles", "fireBubbles", "lightningBubbles"] as const;
 
 /** Expands one round definition into a level: tiles (template or hand-drawn), enemies, drift and flags. */
 export function buildLevel(def: RoundDef): LevelData {
+  if (def.boss) {
+    assertGrid(BOSS_ARENA.tiles, `round ${def.round}`);
+    return structuredClone({ ...BOSS_ARENA, round: def.round });
+  }
   const seed = def.seed ?? def.round * 1009 + 17;
   let tiles: string[];
   if (def.tiles) tiles = [...def.tiles];

@@ -37,6 +37,10 @@ interface LevelResult {
 const roundOf = (lv: unknown, index: number): number =>
   typeof lv === "object" && lv !== null && Number.isInteger((lv as LevelData).round) ? (lv as LevelData).round : index + 1;
 
+/** A level holding a boss spawn is the boss arena and is linted with the boss rules. */
+const hasBossSpawn = (lv: unknown): boolean =>
+  typeof lv === "object" && lv !== null && Array.isArray((lv as LevelData).enemies) && (lv as LevelData).enemies.some((e) => typeof e === "object" && e !== null && e.type === "boss");
+
 const count = (issues: LintIssue[], sev: LintIssue["severity"]): number => issues.filter((i) => i.severity === sev).length;
 
 function statusOf(issues: LintIssue[]): string {
@@ -134,7 +138,7 @@ export function run(argv: string[], io: CliIO): number {
     const round = roundOf(lv, i);
     if (!inRange(round)) return;
     try {
-      const rep = lintReport(lv as LevelData, { kind: round === 100 ? "boss" : "normal", reach, ...(maxNodes !== undefined ? { maxNodes } : {}) });
+      const rep = lintReport(lv as LevelData, { kind: hasBossSpawn(lv) ? "boss" : "normal", reach, ...(maxNodes !== undefined ? { maxNodes } : {}) });
       results.push({ round, enemies: rep.stats.enemyCount, nodes: rep.stats.standingNodes, status: statusOf(rep.issues), issues: rep.issues });
     } catch (e) {
       const issues: LintIssue[] = [{ severity: "error", code: "internal", message: `lint crashed: ${e instanceof Error ? e.message : String(e)}` }];

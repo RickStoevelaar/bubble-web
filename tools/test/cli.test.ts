@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GRID_H, GRID_W, TEST_LEVEL, type EnemySpawn, type LevelData } from "@bubble/shared";
+import { BOSS_ARENA, GRID_H, GRID_W, TEST_LEVEL, lintLevel, type EnemySpawn, type LevelData } from "@bubble/shared";
 import { run, type CliIO } from "../check-levels/cli";
 
 const CLOSED: string[] = Array.from({ length: GRID_H }, (_, y) =>
@@ -178,5 +178,24 @@ describe("check-levels run()", () => {
     const out = parsed(fallback);
     expect(out.levels).toHaveLength(1);
     expect(out.levels[0]!.round).toBe(TEST_LEVEL.round);
+  }, 120000);
+
+  it("lints a level holding a boss spawn with the boss rules (round 100 of the real set is clean in strict mode)", () => {
+    // The arena is only legal as kind "boss": the control proves this test can tell the two kinds apart.
+    expect(lintLevel(BOSS_ARENA, { kind: "normal" }).length).toBeGreaterThan(0);
+    expect(lintLevel(BOSS_ARENA, { kind: "boss" })).toEqual([]);
+    const filler = Array.from({ length: 99 }, (_, i) => lv(i + 1, withLedge(10 + (i % 8))));
+    const h = harness({ "boss.json": json([...filler, BOSS_ARENA]) });
+    expect(run(["--file", "boss.json", "--range", "100-100", "--json", "--strict"], h.io)).toBe(0);
+    const out = parsed(h);
+    expect(out.levels.map((l) => l.round)).toEqual([100]);
+    expect(out.levels[0]!.issues).toEqual([]);
+    expect(out.levels[0]!.status).toBe("ok");
+  }, 120000);
+
+  it("a boss spawn on any round is linted as the boss kind (the kind follows the spawn, not the round number)", () => {
+    const h = harness({ "b.json": json([{ ...BOSS_ARENA, round: 1 }]) });
+    run(["--file", "b.json", "--json"], h.io);
+    expect(parsed(h).levels[0]!.issues).toEqual([]);
   }, 120000);
 });

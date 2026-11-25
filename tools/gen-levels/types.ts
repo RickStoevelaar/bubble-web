@@ -58,4 +58,6 @@ export interface RoundDef {
   flags?: { waterBubbles?: boolean; fireBubbles?: boolean; lightningBubbles?: boolean };
   drift?: DriftSpec[];
   notes?: string;
+  /** The final boss arena: the level is copied from BOSS_ARENA (template, params and enemies are ignored). */
+  boss?: boolean;
 }
