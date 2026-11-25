@@ -31,7 +31,7 @@ export function nextLifeThreshold(score: number): number {
 export function addScore(sim: { state: GameState }, player: 0 | 1, n: number): SimEvent[] {
   const events: SimEvent[] = [];
   const p = sim.state.players[player];
-  if (!p) return events;
+  if (!p || !Number.isFinite(n) || n <= 0) return events;
   p.score += n;
   while (p.score >= p.nextLifeAt) {
     if (p.lives < TUNING.maxLives) p.lives++;

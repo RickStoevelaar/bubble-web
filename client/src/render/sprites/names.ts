@@ -1,4 +1,4 @@
-import type { EnemyType } from "@bubble/shared";
+import type { EnemyType, PowerId } from "@bubble/shared";
 
 /** Glyphs the HUD font provides (space is handled by the text routine). */
 export const FONT_CHARS = [
@@ -34,6 +34,21 @@ export const ITEM_NAMES = [
   "item_star",
 ] as const;
 
+/** Power-up item sprite by PowerId (power items are drawn by `power`, not by the food `sprite` index). */
+export const POWER_SPRITES = {
+  boots: "power_boots",
+  tonicA: "power_tonic_a",
+  parasolS: "power_parasol_s",
+  tonicB: "power_tonic_b",
+  ring: "power_ring",
+  spark: "power_spark",
+  tonicC: "power_tonic_c",
+  parasolM: "power_parasol_m",
+  flask: "power_flask",
+  parasolL: "power_parasol_l",
+} as const satisfies Record<PowerId, string>;
+export type PowerName = (typeof POWER_SPRITES)[PowerId];
+
 export type HeroName = "hero_pip" | "hero_pop";
 export type EnemyName = `enemy_${EnemyType}` | `enemy_${EnemyType}_angry`;
 export type BubbleName = "bubble_normal" | "bubble_water" | "bubble_fire" | "bubble_lightning" | "bubble_letter";
@@ -43,7 +58,7 @@ export type IconName = "icon_pip" | "icon_pop" | "icon_arrow";
 export type ProjectileName = "icon_rock" | "icon_flame";
 export type FontName = `font_${FontChar}`;
 
-export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | TileName | IconName | ProjectileName | FontName;
+export type SpriteName = HeroName | EnemyName | BubbleName | ItemName | PowerName | TileName | IconName | ProjectileName | FontName;
 
 /** Hero frame indices. */
 export const HERO_FRAME = { walk0: 0, walk1: 1, jump: 2, fall: 3, blow: 4, death0: 5 } as const;

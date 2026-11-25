@@ -182,6 +182,20 @@ describe("ClientGame interpolation", () => {
     expect(v.items[2]).toMatchObject({ id: 72, x: 5, y: 5 });
   });
 
+  it("interpolates power items by id like any other item and keeps their power field", () => {
+    const { game, at } = setup();
+    const it = (o: object) => ({ id: 90, x: 100, y: 40, vx: 0, vy: 1, onGround: false, kind: "power", power: "ring", sprite: 0, value: 0, despawnTicks: 100, ...o }) as GameState["items"][number];
+    const a = baseState();
+    a.items = [it({})];
+    const b = baseState();
+    b.items = [it({ y: 60 })];
+    at(0);
+    game.onSnapshot(snap(3, 0, a));
+    at(50);
+    game.onSnapshot(snap(6, 0, b));
+    expect(game.viewState(75)!.items[0]).toMatchObject({ id: 90, kind: "power", power: "ring", y: 50 });
+  });
+
   it("clamps extrapolation to one snapshot interval and never goes before the oldest snapshot", () => {
     const { game, at } = setup();
     const a = baseState();

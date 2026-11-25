@@ -1,7 +1,7 @@
 import { TUNING } from "../constants";
 import type { BubbleState, EnemyState, GameState, SimEvent } from "../types";
 import { killPlayer } from "./combat";
-import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, type Behavior, type EnemySim } from "./enemy-common";
+import { ENEMY_HALF as HALF, ENEMY_SIZE as SIZE, startDeath, type Behavior, type EnemySim } from "./enemy-common";
 import { spawnFood } from "./items";
 import { bouncer, flyer } from "./movers";
 import { moveBody } from "./physics";
@@ -62,13 +62,9 @@ export function releaseTrapped(state: GameState, b: BubbleState): void {
 export function killTrapped(state: GameState, b: BubbleState): boolean {
   const e = enemyOf(state, b);
   if (!e || e.state !== "trapped") return false;
-  e.state = "dead";
   e.x = b.x;
   e.y = b.y;
-  e.vx = e.dir * TUNING.enemyDeathSpeed;
-  e.vy = TUNING.enemyDeathVel;
-  e.onGround = false;
-  e.deadTicks = 0;
+  startDeath(e);
   return true;
 }
 

@@ -81,7 +81,7 @@ export function goldenState(): GameState {
   ];
   s.items.push(
     { id: 20, x: 100, y: 180, vx: 0, vy: 0, onGround: true, kind: "food", sprite: 0, value: 100, despawnTicks: 100 },
-    { id: 21, x: 130, y: 180, vx: 0, vy: 0, onGround: true, kind: "power", sprite: 6, value: 0, despawnTicks: 100 },
+    { id: 21, x: 130, y: 180, vx: 0, vy: 0, onGround: true, kind: "food", sprite: 6, value: 0, despawnTicks: 100 },
   );
   return s;
 }

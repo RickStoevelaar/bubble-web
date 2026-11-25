@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { Sim, TICK_RATE, SNAPSHOT_RATE } from "@bubble/shared";
 import type { ClientMsg, GameState, LevelData, ServerMsg, SimEvent } from "@bubble/shared";
+import type { ScoreEntry } from "./persist";
 import { parseClientMsg } from "./validate";
 
 export interface SocketLike {
@@ -35,7 +36,7 @@ export const realTimers: Timers = {
 
 /** Where finished runs are recorded. */
 export interface ScoreSink {
-  record(entry: { names: string[]; score: number; round: number; date: string }): void;
+  record(entry: ScoreEntry): void;
 }
 
 export interface RoomOptions {

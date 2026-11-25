@@ -74,11 +74,11 @@ describe("renderer tolerates server/client version skew", () => {
     const s = base();
     s.items.push(
       { ...goodItem, id: 10, x: 40, kind: "mystery" as ItemState["kind"] },
-      { ...goodItem, id: 11, x: 80, kind: "power" },
+      { ...goodItem, id: 11, x: 80, kind: "power", power: "ring" },
     );
     const log = draws(s);
-    expect(log.filter((e) => e.includes("item_")).length).toBe(1);
-    expect(has(log, "item_potion")).toBe(true);
+    expect(log.filter((e) => e.includes("item_")).length).toBe(0);
+    expect(has(log, "power_ring")).toBe(true);
   });
 
   it("hasSprite is a non-throwing lookup", () => {

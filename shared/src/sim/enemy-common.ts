@@ -33,3 +33,12 @@ export function nearestAlivePlayer(state: GameState, e: EnemyState): PlayerState
   }
   return target;
 }
+
+/** Starts the death arc of an enemy that a player (or a power) popped; its food spawns when the arc ends. */
+export function startDeath(e: EnemyState): void {
+  e.state = "dead";
+  e.vx = e.dir * TUNING.enemyDeathSpeed;
+  e.vy = TUNING.enemyDeathVel;
+  e.onGround = false;
+  e.deadTicks = 0;
+}

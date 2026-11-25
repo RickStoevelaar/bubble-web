@@ -71,6 +71,25 @@ export const TUNING = {
   /** Side length (px) of an item's square body, and how long food lies around before vanishing. */
   itemSize: 12,
   foodTtlTicks: 600,
+  /** Power items: lifetime on screen, and the counter value (x cycle number) that earns each one. */
+  powerItemTtlTicks: 720,
+  powerThreshold: {
+    boots: 8,
+    tonicA: 10,
+    parasolS: 400,
+    tonicB: 25,
+    ring: 30,
+    spark: 40,
+    tonicC: 55,
+    parasolM: 1200,
+    flask: 60,
+    parasolL: 2400,
+  },
+  /** Score ring: how long it lasts (60 s) and what each jump scores meanwhile. */
+  ringTicks: 3600,
+  ringJumpScore: 100,
+  /** Flask: food items rained from the top of the field. */
+  floodFoodCount: 8,
   /** A life at this score and again every extraLifeStep after it; lives never exceed maxLives. */
   firstExtraLifeScore: 50000,
   extraLifeStep: 100000,

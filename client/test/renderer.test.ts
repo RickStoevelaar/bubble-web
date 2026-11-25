@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState, type ItemState, type ProjectileState } from "@bubble/shared";
+import { Sim, TEST_LEVEL, TUNING, type BubbleState, type EnemyState, type GameState, type ItemState, type PowerId, type ProjectileState } from "@bubble/shared";
 import { render } from "../src/render/renderer";
-import type { SpriteName, SpriteSheet } from "../src/render/sprites";
+import { POWER_SPRITES, type SpriteName, type SpriteSheet } from "../src/render/sprites";
 
 interface Rec {
   names: { name: SpriteName; frame: number }[];
@@ -304,8 +304,30 @@ describe("items from ItemState", () => {
     ]);
   });
 
-  it("draws power items as the potion regardless of sprite", () => {
-    expect(itemNames([item({ kind: "power", sprite: 0 })])).toEqual(["item_potion"]);
+  const powerNames = (items: ItemState[]) => {
+    const h = harness();
+    const s = demoState();
+    s.items = items;
+    render(h.ctx, h.sheet, s, [TEST_LEVEL], 0);
+    return h.rec.names.map((n) => n.name).filter((n) => n.startsWith("power_"));
+  };
+
+  it("draws power items by their power id, regardless of sprite", () => {
+    const ids = Object.keys(POWER_SPRITES) as PowerId[];
+    const got = powerNames(ids.map((power, i) => item({ id: 60 + i, kind: "power", sprite: 0, power })));
+    expect(got).toEqual(ids.map((id) => POWER_SPRITES[id]));
+    expect(itemNames([item({ kind: "power", sprite: 0, power: "boots" })])).toEqual([]);
+  });
+
+  it("skips power items with an unknown or missing power without throwing", () => {
+    const bad = [
+      item({ id: 80, kind: "power", power: "zzz" as PowerId }),
+      item({ id: 81, kind: "power" }),
+      item({ id: 82, kind: "power", power: "toString" as PowerId }),
+    ];
+    expect(() => powerNames(bad)).not.toThrow();
+    expect(powerNames(bad)).toEqual([]);
+    expect(itemNames(bad)).toEqual([]);
   });
 
   it("falls back to an id-based sprite for an out-of-range sprite index (older server)", () => {

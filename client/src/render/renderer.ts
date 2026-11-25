@@ -18,6 +18,7 @@ import {
   HERO_FRAME,
   ENEMY_TYPES,
   ITEM_NAMES,
+  POWER_SPRITES,
   THEME_BG,
   drawEx,
   hasSprite,
@@ -25,6 +26,7 @@ import {
   type Layer,
   type FontName,
   type ItemName,
+  type PowerName,
   type SpriteName,
   type SpriteSheet,
 } from "./sprites";
@@ -57,11 +59,14 @@ export function drawText(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, s: s
   }
 }
 
-/** Food and treasure pick their sprite by index; an index outside 0..7 (older server) falls back to the id. */
-function itemSprite(it: ItemState): ItemName | null {
+/**
+ * Food and treasure pick their sprite by index; an index outside 0..7 (older server) falls back to the id.
+ * Power items are drawn by their power id; a missing or unknown one (version skew) is skipped.
+ */
+function itemSprite(it: ItemState): ItemName | PowerName | null {
   switch (it.kind) {
     case "power":
-      return "item_potion";
+      return it.power !== undefined && Object.prototype.hasOwnProperty.call(POWER_SPRITES, it.power) ? POWER_SPRITES[it.power] : null;
     case "treasure":
     case "food":
       return ITEM_NAMES[Number.isInteger(it.sprite) && it.sprite >= 0 && it.sprite < ITEM_NAMES.length ? it.sprite : Math.abs(it.id) % ITEM_NAMES.length]!;

@@ -7,6 +7,9 @@ import {
   draw,
   frameCount,
   validateTemplates,
+  POWER_SPRITES,
+  ITEM_NAMES,
+  hasSprite,
   type SpriteName,
 } from "../src/render/sprites";
 
@@ -142,5 +145,31 @@ describe("buildSheet", () => {
     draw(ctx, sheet, "hero_pip", 0, 50, 50, true);
     expect(calls).toContain("scale");
     expect(calls.filter((c) => c.startsWith("draw")).length).toBe(1);
+  });
+});
+
+describe("power sprites", () => {
+  const ids = Object.keys(POWER_SPRITES);
+  it("each of the ten PowerIds maps to its own registered 16x16 sprite, distinct from the food sprites", () => {
+    expect(ids).toEqual(["boots", "tonicA", "parasolS", "tonicB", "ring", "spark", "tonicC", "parasolM", "flask", "parasolL"]);
+    const names = Object.values(POWER_SPRITES);
+    expect(new Set(names).size).toBe(10);
+    for (const n of names) {
+      expect(hasSprite(n, 0)).toBe(true);
+      expect(SPRITE_DEFS[n].cls).toBe("char");
+      expect((ITEM_NAMES as readonly string[]).includes(n)).toBe(false);
+    }
+  });
+
+  it("no two power or food sprites share the same pixels", () => {
+    const grids = [...Object.values(POWER_SPRITES), ...ITEM_NAMES].map((n) => SPRITE_DEFS[n].frames[0]!.join("|"));
+    expect(new Set(grids).size).toBe(18);
+  });
+
+  it("every power sprite draws something and uses at least three colours", () => {
+    for (const n of Object.values(POWER_SPRITES)) {
+      const used = new Set(SPRITE_DEFS[n].frames[0]!.join("").replace(/\./g, ""));
+      expect(used.size, n).toBeGreaterThanOrEqual(3);
+    }
   });
 });

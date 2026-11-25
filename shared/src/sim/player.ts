@@ -19,6 +19,8 @@ export function stepPlayer(
   const events: SimEvent[] = [];
   if (p.state !== "alive") return events;
   const lv = sim.currentLevel;
+  const counters = p.counters ?? (p.counters = { bubbles: 0, jumps: 0, distance: 0 });
+  const x0 = Math.floor(p.x);
   if (p.fireCooldown > 0) p.fireCooldown--;
 
   const dir = ((buttons & BTN.R) !== 0 ? 1 : 0) - ((buttons & BTN.L) !== 0 ? 1 : 0);
@@ -29,6 +31,7 @@ export function stepPlayer(
   if ((buttons & BTN.J) !== 0 && p.onGround) {
     p.vy = TUNING.jumpVel;
     p.onGround = false;
+    counters.jumps++;
     events.push({ kind: "jump", player: p.id, x: p.x, y: p.y });
   }
 
@@ -46,10 +49,12 @@ export function stepPlayer(
       owner: p.id,
     });
     p.fireCooldown = Math.round(TUNING.fireCooldownTicks * (p.powers.rapidFire ? 0.5 : 1));
+    counters.bubbles++;
     events.push({ kind: "fire", player: p.id, x: p.x, y: p.y });
   }
 
   moveBody(lv, p, PLAYER_SIZE);
+  counters.distance += Math.abs(Math.floor(p.x) - x0);
 
   return events;
 }

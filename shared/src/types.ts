@@ -50,6 +50,10 @@ export interface ProjectileState {
   ageTicks: number;
 }
 export type ItemKind = "food" | "power" | "treasure";
+/** The ten power-up items; see POWER_TABLE for what each one does and what earns it. */
+export type PowerId = "boots" | "tonicA" | "tonicB" | "tonicC" | "parasolS" | "parasolM" | "parasolL" | "ring" | "spark" | "flask";
+/** The per-player action tallies that earn power items. */
+export type CounterKind = "bubbles" | "jumps" | "distance";
 /** A collectable; (x, y) is the CENTER of the TUNING.itemSize square body. Falls under gravity, then rests. */
 export interface ItemState {
   id: number;
@@ -65,6 +69,8 @@ export interface ItemState {
   value: number;
   /** Ticks until the item vanishes. */
   despawnTicks: number;
+  /** Which power a kind "power" item grants (drawn by this, not by `sprite`). */
+  power?: PowerId;
 }
 
 /**
@@ -89,6 +95,12 @@ export interface PlayerState {
   stateTicks: number;
   onGround: boolean;
   powers: { speed: boolean; fastBubble: boolean; longBubble: boolean; rapidFire: boolean };
+  /** Lifetime action tallies of this run (bubbles blown, jumps made, whole pixels walked); reset only by a new run/continue. */
+  counters: { bubbles: number; jumps: number; distance: number };
+  /** Power items earned so far this run; the next one is POWER_ORDER[powerStep % 10], needing (cycle + 1) x its threshold. */
+  powerStep: number;
+  /** Ticks left of the score ring (every jump scores while > 0). */
+  ringTicks: number;
 }
 
 export interface GameState {
@@ -110,6 +122,8 @@ export interface GameState {
   runOver: boolean;
   /** Next unique entity id (monotonic, survives restore). */
   nextId: number;
+  /** Round a parasol asked to jump to (0 = none); resolved at the end of the tick. */
+  pendingRound: number;
   /** mulberry32 state of Sim.rng, synced at the end of every step so restore resumes the stream. */
   rngState: number;
 }

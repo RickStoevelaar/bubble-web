@@ -6,7 +6,8 @@ import type { GameState, PlayerState, SimEvent } from "../types";
 import { stepBubbles } from "./bubbles";
 import { stepEnemies } from "./enemies";
 import { repairItems, stepItems } from "./items";
-import { nextLifeThreshold } from "./scoring";
+import { maybeSpawnItem, resolvePendingRound } from "./powers";
+import { addScore, nextLifeThreshold } from "./scoring";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
 
@@ -30,7 +31,22 @@ function newPlayer(id: 0 | 1): PlayerState {
     stateTicks: 0,
     onGround: true,
     powers: { speed: false, fastBubble: false, longBubble: false, rapidFire: false },
+    counters: { bubbles: 0, jumps: 0, distance: 0 },
+    powerStep: 0,
+    ringTicks: 0,
   };
+}
+
+const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+
+/** Fills the power-related fields of a player from an older or damaged save. */
+function repairPlayer(p: Partial<PlayerState>): void {
+  const c: Partial<PlayerState["counters"]> = p.counters ?? {};
+  p.counters = { bubbles: count(c.bubbles), jumps: count(c.jumps), distance: count(c.distance) };
+  p.powerStep = count(p.powerStep);
+  p.ringTicks = count(p.ringTicks);
+  const w: Partial<PlayerState["powers"]> = p.powers ?? {};
+  p.powers = { speed: w.speed === true, fastBubble: w.fastBubble === true, longBubble: w.longBubble === true, rapidFire: w.rapidFire === true };
 }
 
 /** Places a player standing on the lowest floor in the spawn column. */
@@ -101,6 +117,7 @@ export class Sim {
       enemiesSeen: false,
       phaseTicks: 0,
       runOver: false,
+      pendingRound: 0,
       nextId: 1,
       rngState: this.rng.getState(),
     };
@@ -122,8 +139,10 @@ export class Sim {
     if (typeof s.runOver !== "boolean") sim.state.runOver = false;
     if (!Array.isArray(s.projectiles)) sim.state.projectiles = [];
     sim.state.items = repairItems(s.items);
+    sim.state.pendingRound = count(s.pendingRound);
     for (const p of sim.state.players as Partial<PlayerState>[]) {
       if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
+      repairPlayer(p);
     }
     // Older saves have no rngState; keep the tick-seeded stream from the constructor.
     if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);
@@ -188,7 +207,12 @@ export class Sim {
       p.state = "alive";
       p.stateTicks = 0;
       p.invulnTicks = TUNING.invulnTicks;
+      p.powers = { speed: false, fastBubble: false, longBubble: false, rapidFire: false };
+      p.counters = { bubbles: 0, jumps: 0, distance: 0 };
+      p.powerStep = 0;
+      p.ringTicks = 0;
     }
+    this.state.pendingRound = 0;
     return [{ kind: "continue" }];
   }
 
@@ -206,12 +230,19 @@ export class Sim {
     if (this.state.phase === "round") this.state.roundTicks++;
     for (const p of this.state.players) {
       stepPlayerLife(this.currentLevel, p);
-      events.push(...stepPlayer(this, p, buttons[p.id]));
+      const own = stepPlayer(this, p, buttons[p.id]);
+      events.push(...own);
+      if (p.ringTicks > 0) {
+        for (const e of own) if (e.kind === "jump") events.push(...addScore(this, p.id, TUNING.ringJumpScore));
+        p.ringTicks--;
+      }
     }
     events.push(...stepBubbles(this, buttons));
     events.push(...stepEnemies(this));
     events.push(...stepItems(this));
+    maybeSpawnItem(this);
     events.push(...stepRound(this));
+    resolvePendingRound(this, events);
     this.state.rngState = this.rng.getState();
     return events;
   }
