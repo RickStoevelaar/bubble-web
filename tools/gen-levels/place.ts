@@ -78,7 +78,7 @@ export function placeEnemies(tiles: readonly string[], specs: readonly EnemySpec
           }
         }
       }
-      chosen.push({ type: spec.type, col: best.col, row: best.row });
+      chosen.push({ type: spec.type, col: best.col, row: best.row, ...(spec.delayTicks !== undefined ? { delay: spec.delayTicks + i * (spec.spread ?? 0) } : {}) });
     }
   }
   return chosen.map((c, i) => ({

@@ -22,6 +22,9 @@ export interface EnemyGroup {
   /** Restrict to a band of the field. */
   zone?: "low" | "mid" | "high" | "any";
   side?: "left" | "right" | "any";
+  /** Spawn wave: the group appears `delayTicks` (plus `spread` per member) after the round starts, instead of the uniform stagger. */
+  delayTicks?: number;
+  spread?: number;
 }
 
 /** One enemy at an exact tile. */

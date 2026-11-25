@@ -2,6 +2,12 @@ import type { Template } from "../types";
 import { bowl } from "./bowl";
 import { brick } from "./brick";
 import { comb } from "./comb";
+import { diamond } from "./diamond";
+import { moat } from "./moat";
+import { nests } from "./nests";
+import { rails } from "./rails";
+import { shafts } from "./shafts";
+import { slashes } from "./slashes";
 import { decker } from "./decker";
 import { islands } from "./islands";
 import { keep } from "./keep";
@@ -18,5 +24,5 @@ import { zigzag } from "./zigzag";
 
 /** Every template by name. Add new families here. */
 export const TEMPLATES: Record<string, Template> = Object.fromEntries(
-  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring].map((t) => [t.name, t]),
+  [tiers, stairs, zigzag, islands, towers, keep, bowl, decker, lattice, waves, pyramid, brick, comb, scatter, tunnel, ring, shafts, moat, diamond, nests, rails, slashes].map((t) => [t.name, t]),
 );
