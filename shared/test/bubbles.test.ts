@@ -204,3 +204,51 @@ describe("player contact", () => {
     expect(sim.state.bubbles).toHaveLength(0);
   });
 });
+
+describe("floor and field bounds", () => {
+  it("a bubble pushed down by a drift cell stays above the floor and in the field", () => {
+    const drift = [];
+    for (let row = 0; row < 28; row++) for (let col = 2; col < 30; col++) drift.push({ col, row, dx: 0, dy: 1 });
+    const sim = newSim({ ...TEST_LEVEL, drift });
+    addBubble(sim, { x: 100, y: 200 }); // above the solid floor (row 26)
+    addBubble(sim, { x: 128, y: 200 }); // above the floor gap (cols 14-17)
+    for (let i = 0; i < 200; i++) {
+      sim.state.bubbles.forEach((b) => (b.ageTicks = 0));
+      run(sim, 1);
+      for (const b of sim.state.bubbles) {
+        expect(b.y + TUNING.bubbleRadius).toBeLessThanOrEqual(FIELD_H + 1e-9);
+        expect(b.y).toBeGreaterThan(0);
+      }
+    }
+    const solid = sim.state.bubbles[0]!;
+    expect(solid.y + TUNING.bubbleRadius).toBeLessThanOrEqual(26 * TILE + 1e-9);
+    expect(solid.y).toBeGreaterThan(24 * TILE);
+  });
+});
+
+describe("restore", () => {
+  it("does not reuse bubble ids after a JSON round trip", () => {
+    const sim = newSim();
+    run(sim, TUNING.fireCooldownTicks * 2 + 2, BTN.F);
+    const before = sim.state.bubbles.map((b) => b.id);
+    const restored = Sim.restore([TEST_LEVEL], JSON.parse(JSON.stringify(sim.state)));
+    restored.state.players[0]!.fireCooldown = 0;
+    restored.step([BTN.F, 0]);
+    const fresh = restored.state.bubbles[restored.state.bubbles.length - 1]!;
+    expect(Number.isNaN(fresh.id)).toBe(false);
+    for (const id of before) expect(fresh.id).toBeGreaterThan(id);
+  });
+
+  it("derives nextId when missing from the saved state", () => {
+    const sim = newSim();
+    run(sim, TUNING.fireCooldownTicks + 2, BTN.F);
+    const saved = JSON.parse(JSON.stringify(sim.state));
+    delete saved.nextId;
+    const restored = Sim.restore([TEST_LEVEL], saved);
+    restored.state.players[0]!.fireCooldown = 0;
+    restored.step([BTN.F, 0]);
+    const ids = restored.state.bubbles.map((b) => b.id);
+    expect(ids.some(Number.isNaN)).toBe(false);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});

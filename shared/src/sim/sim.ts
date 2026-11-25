@@ -79,6 +79,13 @@ export class Sim {
     const sim = new Sim(levels, state.tick, state.players.length === 2 ? 2 : 1);
     sim.state = structuredClone(state);
     sim.currentLevel = levels[state.round - 1]!;
+    if (!Number.isFinite(sim.state.nextId)) {
+      let maxId = 0;
+      for (const b of sim.state.bubbles) maxId = Math.max(maxId, b.id);
+      for (const e of sim.state.enemies) maxId = Math.max(maxId, e.id);
+      for (const i of sim.state.items) maxId = Math.max(maxId, i.id);
+      sim.state.nextId = maxId + 1;
+    }
     return sim;
   }
 

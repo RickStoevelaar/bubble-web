@@ -1,4 +1,4 @@
-import { TILE, TUNING } from "../constants";
+import { FIELD_H, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
 import type { LevelData } from "../level";
 import { BTN } from "../types";
@@ -25,7 +25,7 @@ function startFloat(b: BubbleState): void {
   b.vy = -TUNING.bubbleRise;
 }
 
-/** Keeps a float-phase bubble inside walls and below the ceiling. */
+/** Keeps a float-phase bubble inside walls and below the ceiling, above floors and inside the field (bubbles never wrap). */
 function constrain(lv: LevelData, b: BubbleState): void {
   const left = Math.floor((b.x - R) / TILE);
   if (isSolid(lv, left, Math.floor(b.y / TILE))) b.x = (left + 1) * TILE + R;
@@ -35,6 +35,17 @@ function constrain(lv: LevelData, b: BubbleState): void {
   if (isSolid(lv, Math.floor(b.x / TILE), top)) {
     b.y = (top + 1) * TILE + R;
     if (b.vy < 0) b.vy = 0;
+  }
+  if (b.vy > 0) {
+    const bottom = Math.floor((b.y + R) / TILE);
+    if (isSolid(lv, Math.floor(b.x / TILE), bottom)) {
+      b.y = bottom * TILE - R;
+      b.vy = 0;
+    }
+  }
+  if (b.y > FIELD_H - R) {
+    b.y = FIELD_H - R;
+    if (b.vy > 0) b.vy = 0;
   }
   if (b.y < R) {
     b.y = R;
@@ -90,7 +101,7 @@ export function stepBubbles(
       const c = floaters[j]!;
       let dx = c.x - a.x;
       let dy = c.y - a.y;
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist >= diameter) continue;
       if (dist < 1e-6) {
         dx = 1;
