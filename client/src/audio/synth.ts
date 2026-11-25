@@ -88,15 +88,20 @@ export class Chip {
     const dur = Math.max(0.01, spec.dur);
     const attack = Math.min(env.attack, dur);
     const decay = Math.min(env.decay, Math.max(0, dur - attack));
-    const stopAt = start + dur + env.release + 0.01;
+    // Event times must never go backwards (float sums can differ in the last bit): clamp each to the previous.
+    const tAttack = start + attack;
+    const tDecay = Math.max(tAttack, start + attack + decay);
+    const tEnd = Math.max(tDecay, start + dur);
+    const tRel = tEnd + env.release;
+    const stopAt = tRel + 0.01;
 
     const gain = ctx.createGain();
     const g = gain.gain;
     g.setValueAtTime(0, start);
-    g.linearRampToValueAtTime(spec.vol, start + attack);
-    g.linearRampToValueAtTime(spec.vol * env.sustain, start + attack + decay);
-    g.linearRampToValueAtTime(spec.vol * env.sustain * env.tail, start + dur);
-    g.linearRampToValueAtTime(0, start + dur + env.release);
+    g.linearRampToValueAtTime(spec.vol, tAttack);
+    g.linearRampToValueAtTime(spec.vol * env.sustain, tDecay);
+    g.linearRampToValueAtTime(spec.vol * env.sustain * env.tail, tEnd);
+    g.linearRampToValueAtTime(0, tRel);
 
     const nodes: AudioNode[] = [gain];
     let src: AudioScheduledSourceNode;

@@ -31,6 +31,8 @@ export function createMuteButton(doc: DocLike, audio: AudioApi): MuteButton {
   const el = doc.createElement("button");
   el.setAttribute("type", "button");
   el.setAttribute("id", "mute");
+  // Never focusable by keyboard and blurred after a click: Space is the jump key and must not toggle mute.
+  el.setAttribute("tabindex", "-1");
   el.setAttribute("aria-label", "Mute sound");
   const s = el.style;
   s.position = "fixed";
@@ -58,6 +60,7 @@ export function createMuteButton(doc: DocLike, audio: AudioApi): MuteButton {
   const click = (): void => {
     audio.setMuted(!audio.isMuted());
     refresh();
+    el.blur?.();
   };
   for (const t of TOUCHES) el.addEventListener(t, stop);
   el.addEventListener("click", click);
@@ -104,6 +107,7 @@ export function installMuteKey(
   const handler = (ev: Event): void => {
     const e = ev as KeyboardEvent;
     if (e.key !== "m" && e.key !== "M") return;
+    if (e.repeat) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const a = doc.activeElement;
     if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable)) return;

@@ -119,7 +119,8 @@ export class AudioSys implements AudioApi {
     this.music = new Chip(ctx, musicBus);
     this.sched = new Scheduler({ play: (s, t) => this.music.play(s, t), stopAll: () => this.music.stopAll() }, ctx);
     this.applyGain();
-    ctx.onstatechange = () => this.sync();
+    ctx.onstatechange = () => this.onState();
+    if (ctx.state === "running") this.unlocked = true; // autoplay allowed: no gesture needed
   }
 
   private readonly timers: Timers;
@@ -129,7 +130,7 @@ export class AudioSys implements AudioApi {
   // --- AudioApi ---------------------------------------------------------------------------------
 
   unlock(): void {
-    if (this.disposed) return;
+    if (this.disposed || this.hidden) return;
     this.unlocked = true;
     const ctx = this.ctx;
     if (ctx.state === "running") {
@@ -261,7 +262,8 @@ export class AudioSys implements AudioApi {
   }
 
   private ready(): boolean {
-    return !this.disposed && this.unlocked && !this.muted && !this.hidden && this.ctx.state === "running";
+    // Readiness is the real context state: it may be running without any gesture of ours (autoplay allowed).
+    return !this.disposed && !this.muted && !this.hidden && this.ctx.state === "running";
   }
 
   private silence(): void {
@@ -273,8 +275,13 @@ export class AudioSys implements AudioApi {
   /** Brings the scheduler in line with (desired track, ready) and wakes unlock waiters. */
   private sync(): void {
     if (this.disposed) return;
-    if (this.ctx.state === "running" && this.waiters.length > 0) {
+    if (this.ctx.state === "running") {
+      this.unlocked = true;
       for (const w of this.waiters.splice(0)) w();
+    } else if (this.sched.track || this.timer !== null || this.liveVoices() > 0) {
+      // Interrupted or suspended behind our back: nothing may keep scheduling; recovery restarts on a fresh grid.
+      this.silence();
+      this.stopTimer();
     }
     if (!this.ready()) return;
     const want = this.desired;
@@ -283,6 +290,18 @@ export class AudioSys implements AudioApi {
     } else if (this.sched.track?.name !== want && this.playedOnce !== want) {
       this.sched.start(TRACKS[want]);
       this.ensureTimer();
+    }
+  }
+
+  /** The context changed state by itself (autoplay allowed, iOS interruption, browser suspend). */
+  private onState(): void {
+    this.sync();
+    const st = this.ctx.state as string;
+    if (st === "running" || st === "closed" || this.hidden || !this.unlocked || this.disposed) return;
+    try {
+      void this.ctx.resume()?.then(() => this.sync(), () => undefined); // best effort: may be refused outside a gesture
+    } catch {
+      /* ignore */
     }
   }
 
@@ -303,6 +322,10 @@ export class AudioSys implements AudioApi {
   }
 
   private tick(): void {
+    if (this.ctx.state !== "running") {
+      this.sync();
+      return;
+    }
     this.sfx.sweep();
     this.music.sweep();
     if (this.ready()) this.sched.tick();

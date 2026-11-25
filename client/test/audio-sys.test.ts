@@ -3,9 +3,9 @@ import { AudioSys, MAX_SFX_VOICES, MAX_TOTAL_VOICES } from "../src/audio/audio";
 import { NULL_AUDIO, createAudio } from "../src/audio";
 import { FakeAudioContext, fakeTimers, memStorage, throwingStorage } from "./audio-fake";
 
-function setup(storage: ReturnType<typeof memStorage> | typeof throwingStorage = memStorage()) {
+function setup(storage: ReturnType<typeof memStorage> | typeof throwingStorage = memStorage(), Ctor: unknown = FakeAudioContext) {
   const timers = fakeTimers();
-  const sys = AudioSys.create({ AudioContextCtor: FakeAudioContext as never, timers, storage })!;
+  const sys = AudioSys.create({ AudioContextCtor: Ctor as never, timers, storage })!;
   const ctx = FakeAudioContext.last!;
   const settle = () => new Promise<void>((r) => setTimeout(r, 0));
   const unlock = async () => {
@@ -195,5 +195,105 @@ describe("page visibility", () => {
     expect(ctx.state).toBe("closed");
     sys.playSfx("pop1");
     sys.setMusic("main");
+  });
+});
+
+class RunningContext extends FakeAudioContext {
+  constructor() {
+    super("running");
+  }
+}
+
+describe("readiness follows the real context state, not a gesture flag", () => {
+  it("a context that is already running needs no gesture: sfx play and the remembered music starts", () => {
+    const { sys, ctx, adv } = setup(memStorage(), RunningContext);
+    sys.setMusic("main");
+    sys.playSfx("pop1");
+    adv(0.3);
+    expect(ctx.allSources().length).toBeGreaterThan(2);
+    expect(ctx.resumeCalls).toBe(0);
+  });
+  it("a context that turns running by itself later flushes waiters and starts the remembered music", () => {
+    const { sys, ctx, adv } = setup();
+    let woke = 0;
+    sys.onUnlocked(() => woke++);
+    sys.setMusic("boss");
+    sys.playSfx("pop1");
+    adv(0.3);
+    expect(ctx.allSources().length).toBe(0);
+    ctx.state = "running"; // the browser allowed autoplay or resumed it: no call of ours
+    ctx.onstatechange?.();
+    expect(woke).toBe(1);
+    adv(0.3);
+    expect(ctx.allSources().length).toBeGreaterThan(0);
+    sys.playSfx("collect");
+    expect(ctx.liveSources().length).toBeGreaterThan(0);
+  });
+});
+
+describe("recovery after the context leaves running (iOS interruption)", () => {
+  it("stops the timer and voices, drops sfx, then a gesture restores music on a fresh grid with one resume", async () => {
+    const { sys, ctx, timers, unlock, adv } = setup(memStorage());
+    await unlock();
+    sys.setMusic("main");
+    adv(1);
+    expect(timers.count()).toBe(1);
+    ctx.blockResume = true; // outside a gesture the browser refuses
+    ctx.state = "interrupted";
+    ctx.onstatechange?.();
+    expect(timers.count()).toBe(0);
+    expect(ctx.liveSources().length).toBe(0);
+    const before = ctx.allSources().length;
+    sys.playSfx("pop1");
+    adv(2);
+    expect(ctx.allSources().length).toBe(before); // nothing created, nothing queued
+    ctx.currentTime += 20;
+    await new Promise<void>((r) => setTimeout(r, 300)); // past the resume debounce
+    ctx.blockResume = false; // the gesture is allowed to resume
+    const calls = ctx.resumeCalls;
+    sys.unlock();
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(ctx.resumeCalls - calls).toBe(1);
+    expect(ctx.state).toBe("running");
+    adv(0.3);
+    const fresh = ctx.allSources().slice(before);
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(fresh.length).toBeLessThan(25);
+    for (const n of fresh) expect(n.startedAt!).toBeGreaterThanOrEqual(ctx.currentTime - 0.3 - 1e-9);
+    expect(timers.count()).toBe(1);
+  });
+  it("a gesture while running does not call resume", async () => {
+    const { sys, ctx, unlock } = setup();
+    await unlock();
+    const n = ctx.resumeCalls;
+    sys.unlock();
+    sys.unlock();
+    expect(ctx.resumeCalls).toBe(n);
+  });
+  it("a best-effort resume is attempted when the context drops while the page is visible, and not while hidden", async () => {
+    const { sys, ctx, unlock } = setup();
+    await unlock();
+    ctx.state = "suspended";
+    const n = ctx.resumeCalls;
+    ctx.onstatechange?.();
+    expect(ctx.resumeCalls).toBe(n + 1);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    sys.suspend();
+    const m = ctx.resumeCalls;
+    ctx.state = "suspended";
+    ctx.onstatechange?.();
+    expect(ctx.resumeCalls).toBe(m);
+  });
+});
+
+describe("voices against the strict fake", () => {
+  it("onended releases voices on its own, without the sweep timer", async () => {
+    const { sys, ctx, unlock } = setup();
+    await unlock();
+    sys.playSfx("clear");
+    expect(sys.liveVoices()).toBeGreaterThan(0);
+    ctx.currentTime += 3; // no timer ticks at all
+    expect(sys.liveVoices()).toBe(0);
+    for (const n of ctx.allSources()) expect(n.disconnected).toBe(true);
   });
 });

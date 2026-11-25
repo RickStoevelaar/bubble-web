@@ -56,12 +56,13 @@ function fakeWindow() {
 }
 
 describe("unlock wiring", () => {
-  it("the first of several rapid gestures resumes exactly once and then the listeners go away", async () => {
+  it("the first of several rapid gestures resumes exactly once; the listeners stay for the page lifetime but do nothing while running", async () => {
     const win = fakeWindow();
     const sys = AudioSys.create({ AudioContextCtor: FakeAudioContext as never, timers: fakeTimers(), storage: memStorage() })!;
     const ctx = FakeAudioContext.last!;
     installUnlock(win as never, sys);
-    expect(win.count()).toBeGreaterThanOrEqual(4);
+    const listeners = win.count();
+    expect(listeners).toBeGreaterThanOrEqual(4);
     win.fire("touchend");
     win.fire("pointerdown", { pointerType: "mouse" });
     win.fire("click");
@@ -69,9 +70,24 @@ describe("unlock wiring", () => {
     expect(ctx.resumeCalls).toBe(1);
     await new Promise<void>((r) => setTimeout(r, 0));
     expect(sys.isRunning()).toBe(true);
-    expect(win.count()).toBe(0);
+    expect(win.count()).toBe(listeners);
     win.fire("click");
+    win.fire("touchend");
     expect(ctx.resumeCalls).toBe(1);
+    // the context is interrupted later: the next gesture resumes it again
+    ctx.state = "interrupted";
+    await new Promise<void>((r) => setTimeout(r, 300));
+    win.fire("touchend");
+    expect(ctx.resumeCalls).toBe(2);
+  });
+  it("a gesture while hidden does not try to resume", () => {
+    const win = fakeWindow();
+    const sys = AudioSys.create({ AudioContextCtor: FakeAudioContext as never, timers: fakeTimers(), storage: memStorage() })!;
+    const ctx = FakeAudioContext.last!;
+    installUnlock(win as never, sys);
+    sys.suspend();
+    win.fire("click");
+    expect(ctx.resumeCalls).toBe(0);
   });
   it("a touch pointerdown is not a valid iOS activation: ignored, a later touchend unlocks", async () => {
     const win = fakeWindow();
@@ -101,6 +117,10 @@ class FakeEl {
   constructor(readonly tagName: string) {}
   setAttribute(k: string, v: string) {
     this.attrs.set(k, v);
+  }
+  blurred = 0;
+  blur() {
+    this.blurred++;
   }
   getAttribute(k: string) {
     return this.attrs.get(k) ?? null;
@@ -162,6 +182,20 @@ describe("mute button", () => {
     expect(deck).toBe(0);
     win.fire("touchstart", {}); // a touch elsewhere still reaches the deck
     expect(deck).toBe(1);
+  });
+  it("is out of the tab order and blurs after a click so Space or Enter can never activate it", () => {
+    const { el } = muteSetup();
+    expect(el.getAttribute("tabindex")).toBe("-1");
+    el.dispatch("click");
+    expect(el.blurred).toBe(1);
+  });
+  it("a held M key does not auto-repeat the toggle", () => {
+    const { sys, doc } = muteSetup();
+    const win = fakeWindow();
+    installMuteKey(win as never, doc as never, sys);
+    win.fire("keydown", { key: "m" });
+    win.fire("keydown", { key: "m", repeat: true });
+    expect(sys.isMuted()).toBe(true);
   });
   it("keyboard M toggles unless a text input has focus", () => {
     const { sys, doc } = muteSetup();
