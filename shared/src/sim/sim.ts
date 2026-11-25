@@ -94,6 +94,7 @@ export class Sim {
       roundTicks: 0,
       hurryActive: false,
       nextId: 1,
+      rngState: this.rng.getState(),
     };
     this.loadRound(1);
   }
@@ -106,6 +107,9 @@ export class Sim {
     const sim = new Sim(levels, state.tick, state.players.length === 2 ? 2 : 1);
     sim.state = structuredClone(state);
     sim.currentLevel = levels[state.round - 1]!;
+    // Older saves have no rngState; keep the tick-seeded stream from the constructor.
+    if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);
+    else sim.state.rngState = sim.rng.getState();
     if (!Number.isFinite(sim.state.nextId)) {
       let maxId = 0;
       for (const b of sim.state.bubbles) maxId = Math.max(maxId, b.id);
@@ -162,6 +166,7 @@ export class Sim {
     }
     events.push(...stepBubbles(this, buttons));
     events.push(...stepEnemies(this));
+    this.state.rngState = this.rng.getState();
     return events;
   }
 }

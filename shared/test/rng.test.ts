@@ -15,3 +15,14 @@ describe("Rng", () => {
     }
   });
 });
+
+describe("Rng state", () => {
+  test("setState resumes the exact stream", () => {
+    const a = new Rng(7);
+    a.next();
+    a.next();
+    const b = new Rng(999);
+    b.setState(a.getState());
+    expect([b.next(), b.int(100), b.next()]).toEqual([a.next(), a.int(100), a.next()]);
+  });
+});

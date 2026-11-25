@@ -74,6 +74,8 @@ export interface GameState {
   hurryActive: boolean;
   /** Next unique entity id (monotonic, survives restore). */
   nextId: number;
+  /** mulberry32 state of Sim.rng, synced at the end of every step so restore resumes the stream. */
+  rngState: number;
 }
 
 export type SimEvent = {

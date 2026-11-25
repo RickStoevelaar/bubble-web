@@ -320,3 +320,41 @@ describe("player death", () => {
     expect(p.state).toBe("alive");
   });
 });
+
+describe("restore", () => {
+  const ledgeSim = () => {
+    const sim = newSim();
+    farFromPlayer(sim);
+    addFiller(sim);
+    // Row 8 platform edge: the walker rolls drop-or-turn (sim.rng) a few ticks in.
+    addEnemy(sim, { x: 88, y: 8 * TILE - TUNING.enemySize / 2 });
+    return sim;
+  };
+  it("a JSON round-tripped state resumes the exact RNG stream", () => {
+    const orig = ledgeSim();
+    run(orig, 3); // before the first rolled decision
+    const restored = Sim.restore([TEST_LEVEL], JSON.parse(JSON.stringify(orig.state)));
+    expect(restored.rng.getState()).toBe(orig.rng.getState());
+    run(orig, 200);
+    run(restored, 200);
+    expect(restored.state.enemies.map((e) => [e.x, e.y, e.dir, e.angry])).toEqual(
+      orig.state.enemies.map((e) => [e.x, e.y, e.dir, e.angry]),
+    );
+    expect(restored.state.rngState).toBe(orig.state.rngState);
+    expect([restored.rng.next(), restored.rng.next()]).toEqual([orig.rng.next(), orig.rng.next()]);
+  });
+  it("restoring a state without rngState falls back to a tick-seeded stream", () => {
+    const orig = ledgeSim();
+    run(orig, 3);
+    const saved = JSON.parse(JSON.stringify(orig.state)) as Record<string, unknown>;
+    delete saved.rngState;
+    const restored = Sim.restore([TEST_LEVEL], saved as unknown as typeof orig.state);
+    expect(Number.isFinite(restored.state.rngState)).toBe(true);
+    run(restored, 100);
+    for (const e of restored.state.enemies) {
+      expect(Number.isFinite(e.x)).toBe(true);
+      expect(Number.isFinite(e.y)).toBe(true);
+    }
+    expect(Number.isFinite(restored.rng.next())).toBe(true);
+  });
+});
