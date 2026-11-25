@@ -1,4 +1,4 @@
-import { FIELD_H, FIELD_W, LEVELS } from "@bubble/shared";
+import { FIELD_H, FIELD_W, GAME_LEVELS } from "@bubble/shared";
 import { ClientGame } from "./game";
 import { GamepadInput } from "./input/gamepad";
 import { CombinedInput, KeyboardInput } from "./input/input";
@@ -170,7 +170,7 @@ function boot(): void {
       sampler.frame(now);
       deckView.render(touch.pressed);
       const view = game?.viewState(now);
-      if (game && view) render(ctx, sheet, view, LEVELS, game.localPlayer);
+      if (game && view) render(ctx, sheet, view, GAME_LEVELS, game.localPlayer);
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
@@ -186,7 +186,7 @@ function boot(): void {
     applyView(); // "connecting": disables the button
     p.then(({ playerId }) => {
       saveForm({ room, pin: pinInput.value, name });
-      game = new ClientGame({ levels: LEVELS, playerId });
+      game = new ClientGame({ levels: GAME_LEVELS, playerId });
       startLoop();
     }).catch((err: unknown) => {
       lastError = err instanceof NetError ? err.code : "closed";

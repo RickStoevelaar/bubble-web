@@ -20,6 +20,8 @@ const options = {
   format: "iife",
   target: "es2022",
   sourcemap: true,
+  // Minified for the production build only (the 100 rounds are ~370 KB of JSON); --watch/--serve stay readable.
+  minify: !watch && !serve,
   logLevel: "info",
 };
 

@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { LEVELS } from "@bubble/shared";
+import { GAME_LEVELS, validateLevel } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { WebSocketServer } from "ws";
 import { HighScores, UnlockStore, createFilePersist, dataDir, highScoresFile, unlocksFile } from "./persist";
@@ -14,9 +14,21 @@ import { serveStatic } from "./static";
 import { MAX_MSG_BYTES } from "./validate";
 import { HEARTBEAT_INTERVAL_MS, startHeartbeat, wrapSocket } from "./wsadapter";
 
-/** Single place that supplies the level set. Task 18 swaps this for the real level files. */
+/** Single place that supplies the level set: the real 100 rounds. */
 export function loadLevels(): LevelData[] {
-  return LEVELS;
+  return GAME_LEVELS;
+}
+
+/**
+ * Cheap startup check of a level set (structure only, not the slow lint): at least one level, every level passes
+ * `validateLevel`. Throws naming the offending round (1-based position in the set).
+ */
+export function validateLevelSet(levels: readonly LevelData[]): void {
+  if (!Array.isArray(levels) || levels.length < 1) throw new Error("level set must contain at least one level");
+  levels.forEach((lv, i) => {
+    const problems = validateLevel(lv);
+    if (problems.length > 0) throw new Error(`invalid level at round ${i + 1}: ${problems.slice(0, 3).join("; ")}`);
+  });
 }
 
 export interface ServerConfig {
@@ -24,6 +36,7 @@ export interface ServerConfig {
   port?: number;
   dataDir?: string;
   staticRoot?: string;
+  /** Level set override (tests pass a small fixture); defaults to the real 100 rounds. */
   levels?: LevelData[];
   /** Behind a reverse proxy: take the client IP from the last X-Forwarded-For entry. */
   trustProxy?: boolean;
@@ -60,7 +73,9 @@ function clientIp(req: IncomingMessage, trustProxy: boolean): string {
 export async function createServer(config: ServerConfig): Promise<RunningServer> {
   if (!config.pin) throw new Error("PIN is required");
   const dir = config.dataDir ?? dataDir();
-  const manager = new RoomManager(config.levels ?? loadLevels(), createFilePersist(dir), {
+  const levels = config.levels ?? loadLevels();
+  validateLevelSet(levels);
+  const manager = new RoomManager(levels, createFilePersist(dir), {
     pin: config.pin,
     scores: new HighScores(highScoresFile(dir)),
     unlocks: config.unlocks ?? new UnlockStore(unlocksFile(dir)),
