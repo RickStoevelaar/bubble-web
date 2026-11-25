@@ -1,4 +1,4 @@
-import { FIELD_H, GRID_W, TILE, TUNING } from "../constants";
+import { FIELD_H, GRID_H, GRID_W, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
 import type { LevelData } from "../level";
 
@@ -33,12 +33,15 @@ function wallInColumn(lv: LevelData, tx: number, top: number, bottom: number): b
 /** Side-border width in tiles (the lint enforces it). The border always blocks and always pushes a body back out. */
 const BORDER_COLS = 2;
 
-/** Extent [top, bottom] of the contiguous wall tiles in column `tx` through row `ty`. */
+/**
+ * Extent [top, bottom] of the contiguous wall tiles in column `tx` through row `ty`, within rows 0..GRID_H-1 only:
+ * an out-of-grid column is solid in every row, so an unbounded scan would never end for an off-field body.
+ */
 function wallRun(lv: LevelData, tx: number, ty: number): [number, number] {
   let t = ty;
   let u = ty;
-  while (isWall(lv, tx, t - 1)) t--;
-  while (isWall(lv, tx, u + 1)) u++;
+  while (t > 0 && isWall(lv, tx, t - 1)) t--;
+  while (u < GRID_H - 1 && isWall(lv, tx, u + 1)) u++;
   return [t, u];
 }
 
@@ -48,6 +51,7 @@ function wallRun(lv: LevelData, tx: number, ty: number): [number, number] {
  * a wall tile is only passable when the edge column holds a wall in that same row AND the tx wall there is no taller
  * than the edge column's (the same slab, so the body is embedded in it, never rewound; this also covers the tile
  * boundaries inside the slab). A taller wall is a real face (a pillar joined to the slab) and blocks.
+ * Run containment: the whole vertical wall run of `tx` must lie inside the wall run of `edgeCol`, else it blocks.
  */
 function blocks(lv: LevelData, tx: number, edgeCol: number, top: number, bottom: number): boolean {
   if (tx < BORDER_COLS || tx >= GRID_W - BORDER_COLS) return wallInColumn(lv, tx, top, bottom);

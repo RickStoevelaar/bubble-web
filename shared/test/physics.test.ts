@@ -370,73 +370,200 @@ function oldMove(lv: LevelData, b: Body, size: number): { hit: boolean; startX: 
   return { hit, startX, clamp };
 }
 
-describe("differential: new moveBody vs the old algorithm", () => {
-  it("is identical wherever the old code did not rewind, and never worse where it did", () => {
-    const rng = new Rng(20260);
-    const tiles = Array.from({ length: GRID_H }, (_, y) =>
-      Array.from({ length: GRID_W }, (_, x) => (x < 2 || x > 29 || y > 25 || rng.next() < 0.12 ? "#" : ".")).join(""),
-    );
-    const levels: LevelData[] = [
-      TEST_LEVEL,
-      PILLAR_LEFT,
-      PILLAR_RIGHT,
-      mk([
-        { r0: 20, r1: 21, c0: 2, c1: 9 },
-        { r0: 20, r1: 21, c0: 22, c1: 29 },
-      ]),
-      mk([
-        { r0: 12, r1: 13, c0: 12, c1: 20 },
-        { r0: 6, r1: 6, c0: 4, c1: 9 },
-      ]),
-      { round: 1, theme: 0, tiles, enemies: [], drift: [] },
-    ];
-    const cls = { identical: 0, rewound: 0, embeddedFlush: 0, clamp: 0 };
-    for (let i = 0; i < 60000; i++) {
-      const lv = levels[i % levels.length]!;
-      const size = [12, PLAYER_SIZE, 16][rng.int(3)]!;
-      const H = size / 2;
-      const q = [0.001, 0.25, 2][rng.int(3)]!; // coarse grids hit flush states often
-      const s: Body = {
+/**
+ * Independent oracle, written from the geometric definition and sharing nothing with physics.ts.
+ * Returns "none" (no wall in the target column in the body's rows), "block" (flush stop with hitWall) or
+ * "pass" (the body is embedded in the same slab: it moves on by vx, no hit).
+ *   - a wall tile is a solid tile with a solid tile directly above or below (out-of-grid columns are solid);
+ *   - the border columns 0-1 and 30-31 always block;
+ *   - otherwise, in EVERY body row where the target column is wall, the body's leading-edge column must also be
+ *     wall in that row, and the whole vertical wall run of the target column must lie inside the wall run of the
+ *     edge column.
+ */
+function shouldPassWall(lv: LevelData, s: Body, size: number): { verdict: "none" | "block" | "pass"; flush: number } {
+  const H = size / 2;
+  const solid = (c: number, r: number) => c < 0 || c >= GRID_W || (r >= 0 && r < GRID_H && lv.tiles[r]![c] === "#");
+  const wall = (c: number, r: number) => solid(c, r) && (solid(c, r - 1) || solid(c, r + 1));
+  const runOf = (c: number, r: number): [number, number] => {
+    const rows: boolean[] = Array.from({ length: GRID_H }, (_, i) => wall(c, i));
+    let a = r;
+    let z = r;
+    while (a > 0 && rows[a - 1]) a--;
+    while (z < GRID_H - 1 && rows[z + 1]) z++;
+    return [a, z];
+  };
+  const right = s.vx > 0;
+  if (s.vx === 0) return { verdict: "none", flush: s.x };
+  const nx = s.x + s.vx;
+  const tx = right ? Math.floor((nx + H - 0.001) / TILE) : Math.floor((nx - H) / TILE);
+  const edge = right ? Math.floor((s.x + H - 0.001) / TILE) : Math.floor((s.x - H + 0.001) / TILE);
+  const flush = right ? tx * TILE - H : (tx + 1) * TILE + H;
+  const rows: number[] = [];
+  for (let r = Math.floor((s.y - H) / TILE); r <= Math.floor((s.y + H - 0.001) / TILE); r++) rows.push(r);
+  const wallRows = rows.filter((r) => wall(tx, r));
+  if (wallRows.length === 0) return { verdict: "none", flush };
+  if (tx < 2 || tx >= GRID_W - 2) return { verdict: "block", flush };
+  for (const r of wallRows) {
+    if (!wall(edge, r)) return { verdict: "block", flush };
+    const [a, z] = runOf(tx, r);
+    const [ea, ez] = runOf(edge, r);
+    if (a < ea || z > ez) return { verdict: "block", flush };
+  }
+  return { verdict: "pass", flush };
+}
+
+/** Horizontal half of the criterion from commit 7afd035 (the pillar-tunnelling bug), kept as a mutation check. */
+function buggyMoveX(lv: LevelData, b: Body, size: number): { x: number; hit: boolean } {
+  const H = size / 2;
+  const isSolid = (tx: number, ty: number) => (tx < 0 || tx >= GRID_W ? true : ty < 0 || ty >= GRID_H ? false : lv.tiles[ty]![tx] === "#");
+  const isWall = (tx: number, ty: number) => isSolid(tx, ty) && (isSolid(tx, ty - 1) || isSolid(tx, ty + 1));
+  const wic = (tx: number, top: number, bottom: number) => {
+    for (let ty = Math.floor(top / TILE); ty <= Math.floor((bottom - EPS) / TILE); ty++) if (isWall(tx, ty)) return true;
+    return false;
+  };
+  const nx = b.x + b.vx;
+  const top = b.y - H;
+  const bottom = b.y + H;
+  if (b.vx > 0) {
+    const tx = Math.floor((nx + H - EPS) / TILE);
+    if (wic(tx, top, bottom) && (tx < 2 || tx >= GRID_W - 2 || !wic(Math.floor((b.x + H - EPS) / TILE), top, bottom))) return { x: tx * TILE - H, hit: true };
+  } else if (b.vx < 0) {
+    const tx = Math.floor((nx - H) / TILE);
+    if (wic(tx, top, bottom) && (tx < 2 || tx >= GRID_W - 2 || !wic(Math.floor((b.x - H + EPS) / TILE), top, bottom))) return { x: (tx + 1) * TILE + H, hit: true };
+  }
+  return { x: nx, hit: false };
+}
+
+describe("differential: new moveBody vs the old algorithm and an independent oracle", () => {
+  const rng = new Rng(20260);
+  const tiles = Array.from({ length: GRID_H }, (_, y) =>
+    Array.from({ length: GRID_W }, (_, x) => (x < 2 || x > 29 || y > 25 || rng.next() < 0.12 ? "#" : ".")).join(""),
+  );
+  const levels: LevelData[] = [
+    TEST_LEVEL,
+    PILLAR_LEFT,
+    PILLAR_RIGHT,
+    mk([
+      { r0: 20, r1: 21, c0: 2, c1: 9 },
+      { r0: 20, r1: 21, c0: 22, c1: 29 },
+    ]),
+    mk([
+      { r0: 12, r1: 13, c0: 12, c1: 20 },
+      { r0: 6, r1: 6, c0: 4, c1: 9 },
+    ]),
+    { round: 1, theme: 0, tiles, enemies: [], drift: [] },
+  ];
+  type Sample = { lv: LevelData; size: number; s: Body; pillarFocus: boolean };
+  const samples: Sample[] = [];
+  for (let i = 0; i < 60000; i++) {
+    const lv = levels[i % levels.length]!;
+    const size = [12, PLAYER_SIZE, 16][rng.int(3)]!;
+    const H = size / 2;
+    const q = [0.001, 0.25, 2][rng.int(3)]!; // coarse grids hit flush states often
+    samples.push({
+      lv,
+      size,
+      pillarFocus: false,
+      s: {
         x: Math.round((16 + H + rng.next() * (224 - size)) / q) * q,
         y: Math.round((-10 + rng.next() * 240) / q) * q,
         vx: (rng.int(33) - 16) / 10,
         vy: (rng.next() - 0.6) * 8,
         onGround: false,
-      };
+      },
+    });
+  }
+  // States concentrated beside the pillar joins so bodies with the head in the bar and the feet at a pillar-only row are common.
+  for (let i = 0; i < 6000; i++) {
+    const left = i % 2 === 0;
+    const size = [12, PLAYER_SIZE, 16][rng.int(3)]!;
+    samples.push({
+      lv: left ? PILLAR_LEFT : PILLAR_RIGHT,
+      size,
+      pillarFocus: true,
+      s: { x: (left ? 128 - size / 2 : 136 + size / 2) + (rng.int(9) - 4) * (left ? -1 : 1) * (rng.int(2) ? 1 : 0.5), y: 140 + rng.next() * 70, vx: left ? 1 : -1, vy: (rng.next() - 0.6) * 8, onGround: false },
+    });
+  }
+
+  /** Number of samples where `fn` disagrees with the oracle on hitWall or x. */
+  const oracleMismatches = (fn: (lv: LevelData, b: Body, size: number) => { x: number; hit: boolean }): number => {
+    let bad = 0;
+    for (const { lv, size, s } of samples) {
+      const o = shouldPassWall(lv, s, size);
+      const r = fn(lv, { ...s }, size);
+      const wantX = o.verdict === "block" ? o.flush : s.x + s.vx;
+      if (r.hit !== (o.verdict === "block") || r.x !== wantX) bad++;
+    }
+    return bad;
+  };
+
+  it("matches the oracle on every sample (hitWall, flush x on block, x + vx on pass/none) and the old code elsewhere", () => {
+    const cls = { none: 0, blockOldFlush: 0, blockOldRewound: 0, pass: 0, passOldRewound: 0, clamp: 0, pillarOnlyRow: 0 };
+    for (const { lv, size, s, pillarFocus } of samples) {
       const a = { ...s };
       const n = { ...s };
       const o = oldMove(lv, a, size);
       const hit = moveBody(lv, n, size);
-      const back = s.vx > 0 ? o.startX - a.x : s.vx < 0 ? a.x - o.startX : 0;
+      const v = shouldPassWall(lv, s, size);
+      expect(n.vx).toBe(s.vx);
+      if (v.verdict === "block") {
+        expect(hit).toBe(true);
+        expect(n.x).toBe(v.flush);
+        if (s.vx > 0 ? o.startX - a.x > EPS : a.x - o.startX > EPS) cls.blockOldRewound++;
+        else {
+          // not a rewind: the old code reached exactly the same flush stop and reported the same hit
+          expect(a.x).toBe(v.flush);
+          expect(o.hit).toBe(true);
+          cls.blockOldFlush++;
+        }
+      } else if (v.verdict === "pass") {
+        expect(hit).toBe(false);
+        expect(n.x).toBe(s.x + s.vx);
+        expect(o.hit).toBe(true); // only ever differs from the old code where it reported a wall
+        cls.pass++;
+        if (s.vx > 0 ? o.startX - a.x > EPS : a.x - o.startX > EPS) cls.passOldRewound++;
+      } else {
+        expect(hit).toBe(false);
+        expect(n.x).toBe(s.x + s.vx);
+        expect(o.hit).toBe(false);
+        expect(a.x).toBe(n.x);
+        cls.none++;
+      }
       if (o.clamp) {
-        cls.clamp++;
-        continue; // the top clamp legitimately changes y and vy
+        cls.clamp++; // the head stop legitimately changes y and vy
+      } else if (n.x === a.x) {
+        expect([n.y, n.vy, n.onGround]).toEqual([a.y, a.vy, a.onGround]);
       }
-      if (back > EPS) {
-        cls.rewound++;
-        // Never worse than the old snap, and never into a border column.
-        if (s.vx > 0) expect(n.x).toBeGreaterThanOrEqual(a.x);
-        else expect(n.x).toBeLessThanOrEqual(a.x);
-        expect(n.x - H).toBeGreaterThanOrEqual(16 - 1e-9);
-        expect(n.x + H).toBeLessThanOrEqual(240 + 1e-9);
-        continue;
+      if (pillarFocus) {
+        // A body row where the target column is wall but the edge column is not (pillar-only row): must block.
+        const H = size / 2;
+        const right = s.vx > 0;
+        const tx = right ? Math.floor((s.x + s.vx + H - EPS) / TILE) : Math.floor((s.x + s.vx - H) / TILE);
+        const ec = right ? Math.floor((s.x + H - EPS) / TILE) : Math.floor((s.x - H + EPS) / TILE);
+        const wl = (c: number, r: number) => c >= 0 && c < GRID_W && lv.tiles[r]?.[c] === "#" && (lv.tiles[r - 1]?.[c] === "#" || lv.tiles[r + 1]?.[c] === "#");
+        let pillarOnly = false;
+        for (let r = Math.floor((s.y - H) / TILE); r <= Math.floor((s.y + H - EPS) / TILE); r++) if (wl(tx, r) && !wl(ec, r)) pillarOnly = true;
+        if (pillarOnly) {
+          expect(v.verdict).toBe("block");
+          expect(hit).toBe(true);
+          cls.pillarOnlyRow++;
+        }
       }
-      const same = n.x === a.x && n.y === a.y && n.vx === a.vx && n.vy === a.vy && n.onGround === a.onGround && hit === o.hit;
-      if (same) {
-        cls.identical++;
-        continue;
-      }
-      // The only other allowed difference: the old code stopped at a face (hit, never backward) and the new body
-      // moved on because it is embedded in a slab (edge in or on an interior tile boundary): exactly vx, no hit.
-      expect(o.hit).toBe(true);
-      expect(hit).toBe(false);
-      expect(n.x).toBe(s.x + s.vx);
-      cls.embeddedFlush++;
     }
     console.log("differential classes", JSON.stringify(cls));
-    expect(cls.identical).toBeGreaterThan(30000);
-    expect(cls.rewound).toBeGreaterThan(50);
-    expect(cls.embeddedFlush).toBeGreaterThan(0);
+    expect(cls.none).toBeGreaterThan(20000);
+    expect(cls.blockOldFlush).toBeGreaterThan(500);
+    expect(cls.blockOldRewound).toBe(0); // every old backward snap happened to an embedded body, which now passes
+    expect(cls.passOldRewound).toBeGreaterThan(50);
+    expect(cls.pass).toBeGreaterThan(100);
     expect(cls.clamp).toBeGreaterThan(0);
+    expect(cls.pillarOnlyRow).toBeGreaterThan(300);
+    expect(oracleMismatches((lv, b, size) => ({ hit: moveBody(lv, b, size), x: b.x }))).toBe(0);
+  });
+
+  it("mutation check: the buggy 7afd035 criterion is rejected by the same oracle comparison", () => {
+    const bad = oracleMismatches(buggyMoveX);
+    console.log("mutation (7afd035 criterion) oracle mismatches", bad);
+    expect(bad).toBeGreaterThan(100);
   });
 });
