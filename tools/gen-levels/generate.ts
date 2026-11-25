@@ -1,5 +1,6 @@
 import { Rng } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
+import { assertGrid } from "./invariants";
 import { expandDrift, placeEnemies } from "./place";
 import { ROUNDS } from "./rounds/index";
 import { TEMPLATES } from "./templates/index";
@@ -17,6 +18,7 @@ export function buildLevel(def: RoundDef): LevelData {
     if (!tpl) throw new Error(`round ${def.round}: unknown template "${def.template}"`);
     tiles = tpl.build(def.params, new Rng(seed));
   }
+  assertGrid(tiles, `round ${def.round}`);
   const enemies = placeEnemies(tiles, def.enemies, new Rng((seed ^ 0x9e3779b9) >>> 0), def.stagger ?? 60);
   const level: LevelData = { round: def.round, theme: def.theme, tiles, enemies, drift: expandDrift(tiles, def.drift ?? []) };
   const flags: NonNullable<LevelData["flags"]> = {};
@@ -45,4 +47,9 @@ export function serializeLevels(levels: readonly LevelData[]): string {
 
 export function generateJson(defs: readonly RoundDef[] = ROUNDS): string {
   return serializeLevels(generateLevels(defs));
+}
+
+/** Line endings folded to LF, so a CRLF checkout (git autocrlf) still compares equal to a fresh run. */
+export function normalizeNewlines(text: string): string {
+  return text.split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
 }

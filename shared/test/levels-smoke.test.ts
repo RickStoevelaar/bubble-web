@@ -33,7 +33,7 @@ function runLevel(round: number, input: (t: number) => [number, number]): { sim:
 }
 
 describe("every level runs in the sim", () => {
-  expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(25);
+  it("has at least rounds 1-25", () => expect(GAME_LEVELS.length).toBeGreaterThanOrEqual(25));
   for (let round = 1; round <= 25; round++) {
     it(`round ${round}: idle players`, () => {
       const lv = GAME_LEVELS[round - 1]!;

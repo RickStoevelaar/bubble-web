@@ -47,7 +47,7 @@ export interface RoundDef {
   template: string;
   params: Params;
   seed?: number;
-  /** Hand-drawn 28x32 art (used instead of a template). */
+  /** Hand-drawn 32x28 art (used instead of a template). */
   tiles?: string[];
   enemies: EnemySpec[];
   /** Ticks between spawns after the first two (default 60). */

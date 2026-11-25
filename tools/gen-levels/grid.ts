@@ -12,7 +12,7 @@ export class Grid {
   }
 
   set(col: number, row: number, solid = true): void {
-    if (col < 0 || col >= GRID_W || row < 0 || row >= GRID_H) return;
+    if (col < 0 || col >= GRID_W || row < 0 || row >= GRID_H) throw new RangeError(`tile (${col}, ${row}) is outside the ${GRID_W}x${GRID_H} grid`);
     this.cells[row]![col] = solid;
   }
 

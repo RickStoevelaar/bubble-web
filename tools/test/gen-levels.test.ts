@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { GRID_H, GRID_W, Rng } from "@bubble/shared";
-import { generateJson, generateLevels } from "../gen-levels/generate";
+import { generateJson, generateLevels, normalizeNewlines } from "../gen-levels/generate";
+import { assertGrid } from "../gen-levels/invariants";
+import { defineTemplate } from "../gen-levels/templates/util";
 import { ROUNDS } from "../gen-levels/rounds/index";
 import { TEMPLATES } from "../gen-levels/templates/index";
 
@@ -15,7 +17,16 @@ describe("generator", () => {
   });
 
   it("the committed levels.json is byte-identical to a fresh generator run", () => {
-    expect(readFileSync(LEVELS_JSON, "utf8")).toBe(generateJson());
+    expect(normalizeNewlines(readFileSync(LEVELS_JSON, "utf8"))).toBe(generateJson());
+  });
+
+  it("the comparison tolerates a CRLF checkout but still catches a real one-character difference", () => {
+    const fresh = generateJson();
+    const crlf = (t: string): string => t.split(String.fromCharCode(10)).join(String.fromCharCode(13, 10));
+    expect(normalizeNewlines(crlf(fresh))).toBe(fresh);
+    const changed = fresh.replace('"round": 1,', '"round": 2,');
+    expect(changed).not.toBe(fresh);
+    expect(normalizeNewlines(crlf(changed))).not.toBe(fresh);
   });
 
   it("writes normalized key order, 2-space JSON and a trailing newline", () => {
@@ -57,6 +68,25 @@ describe("template library", () => {
       });
     });
   }
+
+  it("every template also satisfies the invariants with the parameters rounds 1-25 actually use", () => {
+    for (const r of ROUNDS) {
+      if (r.tiles) continue;
+      const rows = TEMPLATES[r.template]!.build(r.params, new Rng(r.seed ?? r.round * 1009 + 17));
+      expect(() => assertGrid(rows, `round ${r.round}`), `round ${r.round}`).not.toThrow();
+    }
+  });
+
+  it("a template that breaks an invariant throws a clear error instead of being silently fixed", () => {
+    const border = defineTemplate("bad-border", "", { gaps: [] as number[][] }, (_p, g) => g.set(0, 5, false));
+    expect(() => border.build({}, new Rng(1))).toThrow(/bad-border.*border.*column 0.*row 5/);
+    const wrap = defineTemplate("bad-wrap", "", { gaps: [] as number[][] }, (_p, g) => g.rect(10, 26, 11, 27, false));
+    expect(() => wrap.build({}, new Rng(1))).toThrow(/bad-wrap.*wrap.*column 10/);
+    const ok = defineTemplate("ok", "", { gaps: [[10, 11]] as number[][] }, () => undefined);
+    expect(() => ok.build({}, new Rng(1))).not.toThrow();
+    expect(() => assertGrid(["#"], "tiny")).toThrow(/32x28/);
+    expect(() => assertGrid(Array(28).fill("x".repeat(32)), "chars")).toThrow(/only/);
+  });
 
   it("templates differ pairwise on their default parameters", () => {
     const seen = new Map<string, string>();
