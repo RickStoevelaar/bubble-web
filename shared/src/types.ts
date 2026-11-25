@@ -101,6 +101,32 @@ export interface PlayerState {
   powerStep: number;
   /** Ticks left of the score ring (every jump scores while > 0). */
   ringTicks: number;
+  /** EXTEND progress: which of the six letters (E X T E N D) this player holds; persists across rounds. */
+  letters: boolean[];
+}
+
+/**
+ * A special-bubble effect. (x, y) is the center of its body, which spans x - reachL .. x + reachR horizontally
+ * (water: a square of TUNING.waterSize; fire: grows from the landing spot; bolt: from the bubble to the field edge).
+ * `ageTicks` counts from landing (water, fire) or from creation (bolt). Created only by `spawnEffect`.
+ */
+export interface EffectState {
+  id: number;
+  kind: "water" | "fire" | "bolt";
+  /** The player who popped the bubble; kills are credited to them. */
+  owner: 0 | 1;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Flow / bolt direction. */
+  dir: 1 | -1;
+  ageTicks: number;
+  onGround: boolean;
+  /** Enemies this effect has killed (the n-th scores chainScore(n)). */
+  kills: number;
+  reachL: number;
+  reachR: number;
 }
 
 export interface GameState {
@@ -112,6 +138,10 @@ export interface GameState {
   bubbles: BubbleState[];
   items: ItemState[];
   projectiles: ProjectileState[];
+  /** Live water / fire / bolt effects in ascending id order. */
+  effects: EffectState[];
+  /** Ticks until the next special bubble is due (counts down in phase round; the rng is drawn only when it hits 0). */
+  specialTimer: number;
   roundTicks: number;
   hurryActive: boolean;
   /** True once a real (non-hurry) enemy has been alive this round; guards round-clear. */

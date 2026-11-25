@@ -10,6 +10,7 @@ import { maybeSpawnItem, resolvePendingRound } from "./powers";
 import { addScore, nextLifeThreshold } from "./scoring";
 import { PLAYER_SIZE, stepPlayer } from "./player";
 import { stepRound } from "./round";
+import { clearSpecials, newLetters, repairEffects, repairLetters, stepEffects, stepSpecialSpawns } from "./specials";
 
 const P1_SPAWN_COL = 3;
 const P2_SPAWN_COL = 28;
@@ -34,6 +35,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     counters: { bubbles: 0, jumps: 0, distance: 0 },
     powerStep: 0,
     ringTicks: 0,
+    letters: newLetters(),
   };
 }
 
@@ -45,6 +47,7 @@ function repairPlayer(p: Partial<PlayerState>): void {
   p.counters = { bubbles: count(c.bubbles), jumps: count(c.jumps), distance: count(c.distance) };
   p.powerStep = count(p.powerStep);
   p.ringTicks = count(p.ringTicks);
+  p.letters = repairLetters(p.letters);
   const w: Partial<PlayerState["powers"]> = p.powers ?? {};
   p.powers = { speed: w.speed === true, fastBubble: w.fastBubble === true, longBubble: w.longBubble === true, rapidFire: w.rapidFire === true };
 }
@@ -112,6 +115,8 @@ export class Sim {
       bubbles: [],
       items: [],
       projectiles: [],
+      effects: [],
+      specialTimer: TUNING.specialFirstDelayTicks,
       roundTicks: 0,
       hurryActive: false,
       enemiesSeen: false,
@@ -139,6 +144,8 @@ export class Sim {
     if (typeof s.runOver !== "boolean") sim.state.runOver = false;
     if (!Array.isArray(s.projectiles)) sim.state.projectiles = [];
     sim.state.items = repairItems(s.items);
+    sim.state.effects = repairEffects(s.effects);
+    sim.state.specialTimer = Number.isFinite(s.specialTimer) ? Math.floor(s.specialTimer!) : TUNING.specialFirstDelayTicks;
     sim.state.pendingRound = count(s.pendingRound);
     for (const p of sim.state.players as Partial<PlayerState>[]) {
       if (!Number.isFinite(p.nextLifeAt)) p.nextLifeAt = nextLifeThreshold(p.score ?? 0);
@@ -184,6 +191,8 @@ export class Sim {
     this.state.bubbles = [];
     this.state.items = [];
     this.state.projectiles = [];
+    clearSpecials(this.state);
+    this.state.specialTimer = TUNING.specialFirstDelayTicks;
     for (const p of this.state.players) placeAtSpawn(lv, p);
   }
 
@@ -211,6 +220,7 @@ export class Sim {
       p.counters = { bubbles: 0, jumps: 0, distance: 0 };
       p.powerStep = 0;
       p.ringTicks = 0;
+      p.letters = newLetters();
     }
     this.state.pendingRound = 0;
     return [{ kind: "continue" }];
@@ -239,6 +249,8 @@ export class Sim {
     }
     events.push(...stepBubbles(this, buttons));
     events.push(...stepEnemies(this));
+    events.push(...stepEffects(this));
+    stepSpecialSpawns(this);
     events.push(...stepItems(this));
     maybeSpawnItem(this);
     events.push(...stepRound(this));

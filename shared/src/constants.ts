@@ -144,4 +144,35 @@ export const TUNING = {
   flyerBobAmplitude: 6,
   flyerBobPeriod: 64,
   flyerBobIdStride: 11,
+
+  /** Special bubbles: ticks before the first one, the random interval (uniform in [min, max)) between spawns, life while floating, and the cap alive at once. */
+  specialFirstDelayTicks: 600,
+  specialIntervalMin: 480,
+  specialIntervalMax: 900,
+  specialBubbleLifeTicks: 900,
+  maxSpecialBubbles: 2,
+  /** Spawn lane: center y is specialLaneMinY + [0, specialLaneSpan); x is specialEdgeX px inside the left or right field edge. */
+  specialLaneMinY: 48,
+  specialLaneSpan: 112,
+  specialEdgeX: 24,
+  /** Per-tick inward x acceleration of a floating special bubble (terminal speed is 10x this). */
+  specialInwardAccel: 0.01,
+  /** Kind weights: each allowed element kind vs the letter (rarer); a letter the first alive player misses weighs letterMissingWeight vs 1. */
+  specialKindWeight: 4,
+  letterWeight: 2,
+  letterMissingWeight: 4,
+  /** Score for collecting a letter the player already has. */
+  duplicateLetterScore: 500,
+  /** Water: body size (px), flow speed (px per tick) and how long it flows after landing. */
+  waterSize: 16,
+  waterSpeed: 1.5,
+  waterRangeTicks: 90,
+  /** Fire: body size (px), spread speed per side (px per tick), max reach per side from the landing x (px) and total burn ticks after landing. */
+  fireSize: 8,
+  fireSpreadSpeed: 1.5,
+  fireMaxSpread: 40,
+  fireDurationTicks: 120,
+  /** Lightning bolt: half the band height (px) and how long its visual stays. */
+  boltHalfHeight: 6,
+  boltVisualTicks: 20,
 } as const;

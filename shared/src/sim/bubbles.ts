@@ -1,11 +1,13 @@
 import { FIELD_H, TILE, TUNING } from "../constants";
 import { isSolid } from "../level";
+import type { Rng } from "../rng";
 import type { LevelData } from "../level";
 import { BTN } from "../types";
 import type { BubbleState, GameState, SimEvent } from "../types";
 import { popCascade } from "./chain";
 import { bubbleTouchesEnemy, releaseTrapped, trapEnemy } from "./enemies";
 import { PLAYER_SIZE } from "./player";
+import { popSpecial, specialInward } from "./specials";
 
 const R = TUNING.bubbleRadius;
 const HALF = PLAYER_SIZE / 2;
@@ -65,7 +67,7 @@ function constrain(lv: LevelData, b: BubbleState): void {
 
 /** Advances all bubbles one tick and resolves player contact. Returns events. */
 export function stepBubbles(
-  sim: { currentLevel: LevelData; state: GameState },
+  sim: { currentLevel: LevelData; state: GameState; levels: unknown[]; rng: Rng },
   buttons: [number, number] = [0, 0],
 ): SimEvent[] {
   const events: SimEvent[] = [];
@@ -75,7 +77,7 @@ export function stepBubbles(
 
   for (const b of state.bubbles) {
     b.ageTicks++;
-    if (b.ageTicks >= TUNING.bubbleLifeTicks) {
+    if (b.ageTicks >= (b.kind === "normal" ? TUNING.bubbleLifeTicks : TUNING.specialBubbleLifeTicks)) {
       dead.add(b.id);
       releaseTrapped(state, b);
       events.push({ kind: "pop", x: b.x, y: b.y });
@@ -103,7 +105,7 @@ export function stepBubbles(
       continue;
     }
     const d = driftAt(lv, b);
-    b.vx = b.vx * TUNING.bubbleDamping + (d ? d.dx * TUNING.bubbleDriftStrength : 0);
+    b.vx = b.vx * TUNING.bubbleDamping + (d ? d.dx * TUNING.bubbleDriftStrength : 0) + specialInward(b);
     b.vy =
       -TUNING.bubbleRise +
       (b.vy + TUNING.bubbleRise) * TUNING.bubbleDamping +
@@ -148,13 +150,18 @@ export function stepBubbles(
     for (const b of floaters) {
       if (dead.has(b.id)) continue;
       if (Math.abs(b.x - p.x) >= HALF + R || Math.abs(b.y - p.y) >= HALF + R) continue;
+      if (b.kind === "letter") {
+        popSpecial(sim, b, p, dead, events);
+        continue;
+      }
       if (jump && p.vy >= 0) {
         p.vy = TUNING.bubbleBounceVel;
         p.onGround = false;
         events.push({ kind: "bounce", player: p.id, x: b.x, y: b.y });
         break;
       }
-      popCascade(sim, b, p.id, dead, events);
+      if (b.kind === "normal") popCascade(sim, b, p.id, dead, events);
+      else popSpecial(sim, b, p, dead, events);
     }
   }
 

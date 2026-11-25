@@ -5,7 +5,9 @@ import {
   GRID_W,
   TILE,
   TUNING,
+  effectHalfHeight,
   type BubbleState,
+  type EffectState,
   type EnemyState,
   type GameState,
   type ItemState,
@@ -156,6 +158,39 @@ function drawProjectile(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, p: Pr
   drawEx(ctx, sheet, name, frame, p.x, p.y, p.kind === "flame" ? { flipX: p.vx < 0 } : undefined);
 }
 
+/** Most tiles one effect may draw (a bolt across the whole field is 32); damaged geometry is clipped to this. */
+const MAX_EFFECT_TILES = 40;
+
+/**
+ * Water is a row of wave tiles resting on the bottom of its body, fire is the small flame sprite tiled along
+ * the burning strip, a bolt is zigzag tiles along its band. Unknown kinds and non-finite geometry are skipped.
+ */
+function drawEffect(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, e: EffectState): void {
+  if (!Number.isFinite(e.x) || !Number.isFinite(e.y) || !Number.isFinite(e.reachL) || !Number.isFinite(e.reachR)) return;
+  let name: SpriteName;
+  let frame: number;
+  switch (e.kind) {
+    case "water":
+      name = "icon_water";
+      frame = (e.ageTicks >> 3) & 1;
+      break;
+    case "fire":
+      name = "icon_flame";
+      frame = (e.ageTicks >> 2) & 1;
+      break;
+    case "bolt":
+      name = "icon_bolt";
+      frame = (e.ageTicks >> 1) & 1;
+      break;
+    default:
+      return; // a kind this client does not know (version skew)
+  }
+  if (!hasSprite(name, frame)) return;
+  const n = Math.min(MAX_EFFECT_TILES, Math.ceil(Math.max(0, e.reachL + e.reachR) / TILE));
+  const y = e.kind === "bolt" ? e.y : e.y + effectHalfHeight(e.kind) - TILE / 2;
+  for (let i = 0; i < n; i++) drawEx(ctx, sheet, name, frame, e.x - e.reachL + i * TILE + TILE / 2, y);
+}
+
 function heroFrame(p: PlayerState, roundTicks: number): number {
   if (p.state === "dying") return HERO_FRAME.death0 + ((p.stateTicks >> 2) & 3);
   if (p.fireCooldown > TUNING.fireCooldownTicks - 10) return HERO_FRAME.blow;
@@ -185,6 +220,19 @@ function drawLives(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, p: PlayerS
   }
 }
 
+const EXTEND_GLYPHS = ["font_E", "font_X", "font_T", "font_E", "font_N", "font_D"] as const;
+const DIM_LETTER: DrawOptions = Object.freeze({ alpha: 0.3 });
+
+/** EXTEND progress under the lives row: collected letters bright, missing ones dim; nothing until the first letter. */
+function drawLetters(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, p: PlayerState, x: number): void {
+  const have = p.letters;
+  if (!Array.isArray(have) || !have.some((l) => l === true)) return;
+  const y = 2 * TILE + TILE / 2;
+  // Bright glyphs first, then the dim ones, so the alpha state changes once.
+  for (let i = 0; i < EXTEND_GLYPHS.length; i++) if (have[i] === true) drawEx(ctx, sheet, EXTEND_GLYPHS[i]!, 0, x + i * TEXT_ADVANCE + TILE / 2, y);
+  for (let i = 0; i < EXTEND_GLYPHS.length; i++) if (have[i] !== true) drawEx(ctx, sheet, EXTEND_GLYPHS[i]!, 0, x + i * TEXT_ADVANCE + TILE / 2, y, DIM_LETTER);
+}
+
 function drawHud(
   ctx: CanvasRenderingContext2D,
   sheet: SpriteSheet,
@@ -200,12 +248,14 @@ function drawHud(
   if (p1) {
     drawText(ctx, sheet, `1UP ${scoreText(p1)}`, left, 0);
     drawLives(ctx, sheet, p1, left);
+    drawLetters(ctx, sheet, p1, left);
   }
   if (p2) {
     const text = `2UP ${scoreText(p2)}`;
     const x = FIELD_W - left - textWidth(text);
     drawText(ctx, sheet, text, x, 0);
     drawLives(ctx, sheet, p2, x);
+    drawLetters(ctx, sheet, p2, x);
   }
   const round = `ROUND ${state.round}`;
   drawText(ctx, sheet, round, Math.round((FIELD_W - textWidth(round)) / 2), 0);
@@ -292,6 +342,10 @@ export function render(
   // Older servers send no projectiles.
   const projectiles = state.projectiles;
   if (projectiles) for (const p of projectiles) drawProjectile(ctx, sheet, p);
+
+  // Older servers send no effects.
+  const effects = state.effects;
+  if (effects) for (const e of effects) drawEffect(ctx, sheet, e);
 
   drawHud(ctx, sheet, state, localPlayer);
 }

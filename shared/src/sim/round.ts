@@ -1,5 +1,6 @@
 import { FIELD_W, TUNING } from "../constants";
 import type { GameState, SimEvent } from "../types";
+import { clearSpecials } from "./specials";
 
 export interface RoundSim {
   state: GameState;
@@ -51,6 +52,7 @@ export function stepRound(sim: RoundSim): SimEvent[] {
       state.phaseTicks = 0;
       state.enemies = state.enemies.filter((e) => e.type !== "hurry");
       state.projectiles = [];
+      clearSpecials(state);
       events.push({ kind: "clear" });
     }
   } else if (state.phase === "clearing") {

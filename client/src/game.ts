@@ -262,6 +262,8 @@ export class ClientGame {
       items: this.tween(from.items, s.items, t),
       // Older servers send no projectiles.
       ...(s.projectiles ? { projectiles: this.tween(from.projectiles ?? [], s.projectiles, t) } : {}),
+      // Older servers send no effects.
+      ...(s.effects ? { effects: this.tween(from.effects ?? [], s.effects, t) } : {}),
     };
   }
 
