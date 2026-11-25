@@ -14,9 +14,12 @@ import {
 import {
   FONT_CHARS,
   HERO_FRAME,
+  ENEMY_TYPES,
   ITEM_NAMES,
   THEME_BG,
   drawEx,
+  type DrawOptions,
+  type Layer,
   type FontName,
   type ItemName,
   type SpriteName,
@@ -30,7 +33,13 @@ export const MARKER_TICKS = 120;
 /** Trapped enemies are drawn at this size inside their bubble. */
 const TRAPPED_SIZE = 12;
 
-const KNOWN_GLYPHS = new Set<string>(FONT_CHARS);
+/** char -> glyph sprite name, built once (lowercase maps to uppercase except the symbol "x"). */
+const GLYPH_NAME = new Map<string, FontName>();
+for (const ch of FONT_CHARS) {
+  const name = `font_${ch}` as FontName;
+  GLYPH_NAME.set(ch, name);
+  if (ch !== "x" && ch.toLowerCase() !== ch) GLYPH_NAME.set(ch.toLowerCase(), name);
+}
 
 export function textWidth(s: string): number {
   return s.length * TEXT_ADVANCE;
@@ -39,10 +48,9 @@ export function textWidth(s: string): number {
 /** Draw `s` with its top-left at (x, y). Lowercase maps to uppercase except the symbol "x". */
 export function drawText(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, s: string, x: number, y: number): void {
   for (let i = 0; i < s.length; i++) {
-    let ch = s[i]!;
-    if (ch !== "x") ch = ch.toUpperCase();
-    if (!KNOWN_GLYPHS.has(ch)) continue;
-    drawEx(ctx, sheet, `font_${ch}` as FontName, 0, x + i * TEXT_ADVANCE + TILE / 2, y + TILE / 2);
+    const name = GLYPH_NAME.get(s[i]!);
+    if (name === undefined) continue;
+    drawEx(ctx, sheet, name, 0, x + i * TEXT_ADVANCE + TILE / 2, y + TILE / 2);
   }
 }
 
@@ -54,26 +62,54 @@ interface LooseItem {
   kind?: string;
 }
 
+const TREASURE_ITEMS: readonly ItemName[] = ["item_gem", "item_crown", "item_star"];
+const FOOD_ITEMS: readonly ItemName[] = ["item_plum", "item_cake", "item_fish", "item_pear"];
+
 function itemSprite(it: LooseItem): ItemName {
-  const pick = (names: ItemName[]) => names[Math.abs(it.id) % names.length]!;
   switch (it.kind) {
     case "power":
       return "item_potion";
     case "treasure":
-      return pick(["item_gem", "item_crown", "item_star"]);
+      return TREASURE_ITEMS[Math.abs(it.id) % TREASURE_ITEMS.length]!;
     case "food":
-      return pick(["item_plum", "item_cake", "item_fish", "item_pear"]);
+      return FOOD_ITEMS[Math.abs(it.id) % FOOD_ITEMS.length]!;
     default:
       return ITEM_NAMES[Math.abs(it.id) % ITEM_NAMES.length]!;
   }
 }
 
-function enemySprite(e: Pick<EnemyState, "type" | "angry">): SpriteName {
-  return `enemy_${e.type}${e.angry ? "_angry" : ""}` as SpriteName;
+const ENEMY_NORMAL = new Map<string, SpriteName>();
+const ENEMY_ANGRY = new Map<string, SpriteName>();
+for (const type of ENEMY_TYPES) {
+  ENEMY_NORMAL.set(type, `enemy_${type}` as SpriteName);
+  ENEMY_ANGRY.set(type, `enemy_${type}_angry` as SpriteName);
+}
+
+function enemySprite(type: EnemyState["type"], angry: boolean): SpriteName {
+  return (angry ? ENEMY_ANGRY : ENEMY_NORMAL).get(type)!;
+}
+
+const BUBBLE_NAMES: Record<BubbleState["kind"], SpriteName> = {
+  normal: "bubble_normal",
+  water: "bubble_water",
+  fire: "bubble_fire",
+  lightning: "bubble_lightning",
+  letter: "bubble_letter",
+};
+const TRAPPED_OPTS: DrawOptions = Object.freeze({ size: TRAPPED_SIZE });
+
+function enemyById(enemies: EnemyState[], id: number): EnemyState | undefined {
+  for (let i = 0; i < enemies.length; i++) if (enemies[i]!.id === id) return enemies[i];
+  return undefined;
+}
+
+function playerById(players: PlayerState[], id: number): PlayerState | undefined {
+  for (let i = 0; i < players.length; i++) if (players[i]!.id === id) return players[i];
+  return undefined;
 }
 
 function drawEnemy(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, e: EnemyState, walkFrame: number): void {
-  const name = enemySprite(e);
+  const name = enemySprite(e.type, e.angry);
   if (e.state === "dead") {
     drawEx(ctx, sheet, name, walkFrame, e.x, e.y, { rotate: (e.deadTicks ?? 0) * 0.5, flipX: e.dir === -1 });
   } else if (e.state === "spawning") {
@@ -95,13 +131,12 @@ function drawBubble(
     return;
   }
   const frame = (b.ageTicks >> 4) & 1;
-  drawEx(ctx, sheet, `bubble_${b.kind}`, frame, b.x, b.y);
-  if (b.trapped) {
-    const owner = enemies.find((e) => e.id === b.trapped!.enemyId);
-    const flashing = b.trapped.escapeIn < 60 && (roundTicks >> 2) % 2 === 0;
-    drawEx(ctx, sheet, enemySprite({ type: b.trapped.type, angry: flashing || (owner?.angry ?? false) }), frame, b.x, b.y, {
-      size: TRAPPED_SIZE,
-    });
+  drawEx(ctx, sheet, BUBBLE_NAMES[b.kind], frame, b.x, b.y);
+  const trapped = b.trapped;
+  if (trapped) {
+    const owner = enemyById(enemies, trapped.enemyId);
+    const flashing = trapped.escapeIn < 60 && (roundTicks >> 2) % 2 === 0;
+    drawEx(ctx, sheet, enemySprite(trapped.type, flashing || (owner?.angry ?? false)), frame, b.x, b.y, TRAPPED_OPTS);
   }
 }
 
@@ -120,6 +155,20 @@ function playerVisible(p: PlayerState): boolean {
   return true;
 }
 
+function scoreText(p: PlayerState): string {
+  return String(Math.max(0, Math.floor(p.score))).padStart(6, "0");
+}
+
+function drawLives(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, p: PlayerState, x: number): void {
+  const icon = p.id === 0 ? "icon_pip" : "icon_pop";
+  if (p.lives > 4) {
+    drawEx(ctx, sheet, icon, 0, x + TILE / 2, TILE + TILE / 2);
+    drawText(ctx, sheet, `x${p.lives}`, x + TILE + 1, TILE);
+  } else {
+    for (let i = 0; i < p.lives; i++) drawEx(ctx, sheet, icon, 0, x + i * (TILE + 1) + TILE / 2, TILE + TILE / 2);
+  }
+}
+
 function drawHud(
   ctx: CanvasRenderingContext2D,
   sheet: SpriteSheet,
@@ -129,34 +178,23 @@ function drawHud(
   ctx.fillStyle = "rgba(0,0,0,0.78)";
   ctx.fillRect(0, 0, FIELD_W, TILE);
 
-  const score = (p: PlayerState) => String(Math.max(0, Math.floor(p.score))).padStart(6, "0");
-  const lives = (p: PlayerState, x: number) => {
-    const icon = p.id === 0 ? "icon_pip" : "icon_pop";
-    if (p.lives > 4) {
-      drawEx(ctx, sheet, icon, 0, x + TILE / 2, TILE + TILE / 2);
-      drawText(ctx, sheet, `x${p.lives}`, x + TILE + 1, TILE);
-    } else {
-      for (let i = 0; i < p.lives; i++) drawEx(ctx, sheet, icon, 0, x + i * (TILE + 1) + TILE / 2, TILE + TILE / 2);
-    }
-  };
-
-  const p1 = state.players.find((p) => p.id === 0);
-  const p2 = state.players.find((p) => p.id === 1);
+  const p1 = playerById(state.players, 0);
+  const p2 = playerById(state.players, 1);
   const left = 12;
   if (p1) {
-    drawText(ctx, sheet, `1UP ${score(p1)}`, left, 0);
-    lives(p1, left);
+    drawText(ctx, sheet, `1UP ${scoreText(p1)}`, left, 0);
+    drawLives(ctx, sheet, p1, left);
   }
   if (p2) {
-    const text = `2UP ${score(p2)}`;
+    const text = `2UP ${scoreText(p2)}`;
     const x = FIELD_W - left - textWidth(text);
     drawText(ctx, sheet, text, x, 0);
-    lives(p2, x);
+    drawLives(ctx, sheet, p2, x);
   }
   const round = `ROUND ${state.round}`;
   drawText(ctx, sheet, round, Math.round((FIELD_W - textWidth(round)) / 2), 0);
 
-  const me = state.players.find((p) => p.id === localPlayer);
+  const me = playerById(state.players, localPlayer);
   if (me && me.state !== "gone" && state.roundTicks < MARKER_TICKS) {
     const bob = (state.roundTicks >> 3) & 1 ? 2 : 0;
     drawEx(ctx, sheet, "icon_arrow", 0, me.x, me.y - 16 - bob);
@@ -166,6 +204,35 @@ function drawHud(
     const t = "HURRY!";
     drawText(ctx, sheet, t, Math.round((FIELD_W - textWidth(t)) / 2), FIELD_H / 2 - TILE / 2);
   }
+}
+
+/** Static theme fill plus wall tiles, rendered once per (level, theme) into an offscreen layer. */
+interface BackgroundCache {
+  level: LevelData | undefined;
+  theme: number;
+  layer: Layer;
+}
+const backgroundCaches = new WeakMap<SpriteSheet, BackgroundCache>();
+
+function backgroundLayer(sheet: SpriteSheet, level: LevelData | undefined, theme: number): Layer {
+  const cached = backgroundCaches.get(sheet);
+  if (cached && cached.level === level && cached.theme === theme) return cached.layer;
+  const layer = cached?.layer ?? sheet.createLayer(FIELD_W, FIELD_H);
+  const lctx = layer.ctx;
+  lctx.fillStyle = THEME_BG[theme] ?? "#000";
+  lctx.fillRect(0, 0, FIELD_W, FIELD_H);
+  if (level) {
+    const tile = `tile_${theme}` as SpriteName;
+    for (let row = 0; row < GRID_H; row++) {
+      const line = level.tiles[row];
+      if (!line) continue;
+      for (let col = 0; col < GRID_W; col++) {
+        if (line[col] === "#") drawEx(lctx, sheet, tile, 0, col * TILE + TILE / 2, row * TILE + TILE / 2);
+      }
+    }
+  }
+  backgroundCaches.set(sheet, { level, theme, layer });
+  return layer;
 }
 
 /**
@@ -185,19 +252,8 @@ export function render(
   const theme = (((level?.theme ?? 0) % 10) + 10) % 10;
   const walkFrame = (state.roundTicks >> 3) & 1;
 
-  ctx.fillStyle = THEME_BG[theme] ?? "#000";
-  ctx.fillRect(0, 0, FIELD_W, FIELD_H);
-
-  if (level) {
-    const tile = `tile_${theme}` as SpriteName;
-    for (let row = 0; row < GRID_H; row++) {
-      const line = level.tiles[row];
-      if (!line) continue;
-      for (let col = 0; col < GRID_W; col++) {
-        if (line[col] === "#") drawEx(ctx, sheet, tile, 0, col * TILE + TILE / 2, row * TILE + TILE / 2);
-      }
-    }
-  }
+  const bg = backgroundLayer(sheet, level, theme);
+  ctx.drawImage(bg.canvas, 0, 0, FIELD_W, FIELD_H, 0, 0, FIELD_W, FIELD_H);
 
   for (const it of state.items as LooseItem[]) {
     if (Number.isFinite(it.x) && Number.isFinite(it.y)) drawEx(ctx, sheet, itemSprite(it), 0, it.x!, it.y!);

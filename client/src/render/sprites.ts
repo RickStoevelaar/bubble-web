@@ -61,8 +61,16 @@ export interface SheetRect {
   h: number;
 }
 
+/** Offscreen drawing surface used for cached layers. */
+export interface Layer {
+  canvas: CanvasImageSource;
+  ctx: CanvasRenderingContext2D;
+}
+
 export interface SpriteSheet {
   canvas: CanvasImageSource;
+  /** Creates an offscreen layer: the injectable seam for the renderer's background cache. */
+  createLayer(w: number, h: number): Layer;
   rectOf(name: SpriteName, frame: number): SheetRect;
 }
 
@@ -121,6 +129,14 @@ export function buildSheet(doc: Document): SpriteSheet {
 
   return {
     canvas,
+    createLayer(w, h) {
+      const layer = doc.createElement("canvas");
+      layer.width = w;
+      layer.height = h;
+      const lctx = layer.getContext("2d");
+      if (!lctx) throw new Error("2d canvas context unavailable");
+      return { canvas: layer, ctx: lctx };
+    },
     rectOf(name, frame) {
       const r = rects.get(`${name}#${frame}`);
       if (!r) throw new Error(`unknown sprite frame ${name}#${frame}`);
@@ -138,6 +154,10 @@ export interface DrawOptions {
   alpha?: number;
 }
 
+/** Shared option objects so option-less draws allocate nothing. */
+const EMPTY: DrawOptions = Object.freeze({});
+const FLIP: DrawOptions = Object.freeze({ flipX: true });
+
 /** Blit one frame centred on (x, y). */
 export function drawEx(
   ctx: CanvasRenderingContext2D,
@@ -146,7 +166,7 @@ export function drawEx(
   frame: number,
   x: number,
   y: number,
-  o: DrawOptions = {},
+  o: DrawOptions = EMPTY,
 ): void {
   const r = sheet.rectOf(name, frame);
   const dw = o.size ?? r.w;
@@ -173,5 +193,5 @@ export function draw(
   y: number,
   flipX = false,
 ): void {
-  drawEx(ctx, sheet, name, frame, x, y, flipX ? { flipX: true } : {});
+  drawEx(ctx, sheet, name, frame, x, y, flipX ? FLIP : EMPTY);
 }

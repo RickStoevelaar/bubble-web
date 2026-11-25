@@ -15,6 +15,7 @@ function harness() {
   const rec: Rec = { names: [], draws: [], fills: 0 };
   const sheet = {
     canvas: {} as CanvasImageSource,
+    createLayer: () => ({ canvas: {} as CanvasImageSource, ctx: layerCtx }),
     rectOf(name: SpriteName, frame: number) {
       rec.names.push({ name, frame });
       const s = SMALL.some((p) => name.startsWith(p)) ? 8 : 16;
@@ -22,6 +23,7 @@ function harness() {
     },
   } as unknown as SpriteSheet;
   const noop = () => {};
+  let layerCtx: CanvasRenderingContext2D;
   const ctx = {
     fillStyle: "",
     globalAlpha: 1,
@@ -33,6 +35,7 @@ function harness() {
     scale: noop,
     rotate: noop,
   } as unknown as CanvasRenderingContext2D;
+  layerCtx = ctx;
   return { rec, sheet, ctx };
 }
 
