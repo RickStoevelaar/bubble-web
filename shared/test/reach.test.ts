@@ -29,10 +29,13 @@ describe("reach analyzer (moved from the secrets test)", () => {
     expect(startsOfTiles([{ col: 3, row: 25 }])).toEqual([{ x: 3 * TILE + TILE / 2, y: 25 * TILE + 1 }]);
   });
 
-  it("room PIP has exactly 374 standing nodes, none trapped, largest rise 40", () => {
+  it("room PIP has exactly 524 standing nodes, none trapped, largest rise 40", () => {
+    // Was 374 before moveBody stopped rewinding bodies embedded in a thick stroke: the 2-row letter strokes used to
+    // snap a body that rose into them back to the face, so the 150 extra embedded standing spots (all in one
+    // component; trapped and maxRise unchanged) were unreachable sideways.
     const g = analyseStands(SECRET_ROOMS[0].level, roomStarts(SECRET_ROOMS[0]), MARGIN_JUMP);
-    expect(g.nodes.size).toBe(374);
-    expect(g.component.size).toBe(374);
+    expect(g.nodes.size).toBe(524);
+    expect(g.component.size).toBe(524);
     expect(g.trapped).toEqual([]);
     expect(g.maxRise).toBe(40);
     expect(g.maxRise).toBeLessThanOrEqual(jumpApex(TUNING.jumpVel) - 4);
