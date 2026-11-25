@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "workspaces": [
-    "shared"
+    "shared",
+    "server"
   ],
   "scripts": {
     "test": "vitest run",

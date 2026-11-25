@@ -111,6 +111,11 @@ export class Sim {
     const sim = new Sim(levels, state.tick, state.players.length === 2 ? 2 : 1);
     sim.state = structuredClone(state);
     sim.currentLevel = levels[state.round - 1]!;
+    // Defaults for fields that older saves may lack.
+    const s = sim.state as Partial<GameState>;
+    if (typeof s.enemiesSeen !== "boolean") sim.state.enemiesSeen = false;
+    if (!Number.isFinite(s.phaseTicks)) sim.state.phaseTicks = 0;
+    if (typeof s.runOver !== "boolean") sim.state.runOver = false;
     // Older saves have no rngState; keep the tick-seeded stream from the constructor.
     if (Number.isFinite(sim.state.rngState)) sim.rng.setState(sim.state.rngState);
     else sim.state.rngState = sim.rng.getState();

@@ -3,6 +3,7 @@ export * from "./rng";
 export * from "./level";
 export * from "./levels/test-level";
 export * from "./types";
+export * from "./protocol";
 export * from "./sim/player";
 export * from "./sim/sim";
 export * from "./sim/bubbles";
