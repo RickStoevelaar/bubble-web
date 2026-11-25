@@ -1,0 +1,21 @@
+{
+  "name": "bubble-web",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "shared"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.7",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}
