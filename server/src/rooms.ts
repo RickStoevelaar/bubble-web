@@ -1,5 +1,6 @@
+import { SUPER_CODE } from "@bubble/shared";
 import type { ClientMsg, LevelData } from "@bubble/shared";
-import { RateLimiter, Room, realTimers } from "./room";
+import { RateLimiter, Room, realTimers, verifyPin } from "./room";
 import type { Persist, RoomOptions, SocketLike } from "./room";
 import { parseClientMsg } from "./validate";
 
@@ -50,6 +51,13 @@ export class RoomManager {
   }
 
   join(sock: SocketLike, msg: Extract<ClientMsg, { t: "join" }>): void {
+    const superRoom = msg.room === SUPER_CODE; // msg.room is already validated and upper-cased
+    if (superRoom) {
+      // PIN first, exactly as for any room, so a stranger never learns whether Super mode is unlocked.
+      const pin = verifyPin(this.limiter, sock.ip ?? "unknown", msg.pin, this.opts.pin);
+      if (pin !== "ok") return this.rejectJoin(sock, pin);
+      if (this.opts.unlocks?.isSuperUnlocked?.() !== true) return this.rejectJoin(sock, "locked");
+    }
     let room = this.rooms.get(msg.room);
     const created = !room;
     if (!room) {
@@ -60,6 +68,7 @@ export class RoomManager {
       }
       room = new Room(msg.room, this.levels, this.persist, {
         ...this.opts,
+        superMode: superRoom,
         limiter: this.limiter,
         onSuspend: (r) => {
           if (this.rooms.get(r.code) === r) this.rooms.delete(r.code);
@@ -76,6 +85,15 @@ export class RoomManager {
   closeAll(): void {
     for (const room of [...this.rooms.values()]) room.suspend();
     this.rooms.clear();
+  }
+
+  private rejectJoin(sock: SocketLike, code: "badpin" | "ratelimit" | "locked"): void {
+    try {
+      sock.send(JSON.stringify({ t: "err", code }));
+    } catch {
+      /* ignore */
+    }
+    this.closeQuietly(sock);
   }
 
   private badMsg(sock: SocketLike): void {

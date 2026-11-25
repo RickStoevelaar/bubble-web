@@ -6,6 +6,7 @@ export const ERROR_TEXT: Record<ShownError, string> = {
   badpin: "That PIN is not right.",
   full: "The room is full — if you were just disconnected, try again in a few seconds.",
   ratelimit: "Too many tries. Wait a minute and try again.",
+  locked: "That room opens after you beat the game together.",
   badmsg: "The server did not understand the game. Please reload the page.",
   timeout: "Could not reach the server. Check your connection and try again.",
   closed: "The connection was closed.",

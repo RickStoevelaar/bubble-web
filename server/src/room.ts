@@ -39,9 +39,22 @@ export interface ScoreSink {
   record(entry: ScoreEntry): void;
 }
 
+/**
+ * Where the Super-mode unlock is recorded (idempotent on the store side). A Room only writes; the manager's
+ * Super-room gate also reads, and treats a sink without `isSuperUnlocked` as locked.
+ */
+export interface UnlockSink {
+  unlockSuper(dateIso: string): void;
+  isSuperUnlocked?(): boolean;
+}
+
 export interface RoomOptions {
   /** High-score table; runs are not recorded when omitted. */
   scores?: ScoreSink;
+  /** Told when a run ends in the true ending. */
+  unlocks?: UnlockSink;
+  /** A NEW run starts in hard mode (a run restored from a save keeps whatever the save says). */
+  superMode?: boolean;
   pin: string;
   now?: () => number;
   timers?: Timers;
@@ -123,6 +136,19 @@ const sha256 = (s: string): Buffer => createHash("sha256").update(s).digest();
 /** Constant-time string equality (both sides hashed so lengths always match). */
 const safeEqual = (a: string, b: string): boolean => timingSafeEqual(sha256(a), sha256(b));
 
+/**
+ * The one PIN decision: blocked clients are told so, a wrong PIN counts toward the limiter, a right one costs nothing.
+ * Shared by Room and the manager's Super-room gate so both account for failures identically.
+ */
+export function verifyPin(limiter: RateLimiter, ip: string, pin: string, expected: string): "ok" | "badpin" | "ratelimit" {
+  if (limiter.isBlocked(ip)) return "ratelimit";
+  if (!safeEqual(pin, expected)) {
+    limiter.fail(ip);
+    return "badpin";
+  }
+  return "ok";
+}
+
 interface Seat {
   token: string;
   name: string;
@@ -153,6 +179,8 @@ export class Room {
   private emptySince?: number;
   /** True once the current run's score entry is written (or the run was already over when loaded). */
   private scoreRecorded = false;
+  /** True once this Room instance has reported the true ending (the store itself is idempotent). */
+  private unlockReported = false;
   private loop?: unknown;
   private loopStart = 0;
   private loopTicks = 0;
@@ -196,11 +224,8 @@ export class Room {
   private doJoin(sock: SocketLike, msg: ClientMsg): void {
     if (msg.t !== "join" || this.dormant) return this.reject(sock, "badmsg");
     const ip = sock.ip ?? "unknown";
-    if (this.limiter.isBlocked(ip)) return this.reject(sock, "ratelimit");
-    if (!safeEqual(msg.pin, this.opts.pin)) {
-      this.limiter.fail(ip);
-      return this.reject(sock, "badpin");
-    }
+    const pin = verifyPin(this.limiter, ip, msg.pin, this.opts.pin);
+    if (pin !== "ok") return this.reject(sock, pin);
 
     let idx = -1;
     let reclaim = false;
@@ -212,7 +237,10 @@ export class Room {
     if (!reclaim) idx = [0, 1].find((i) => !this.seats[i]?.sock) ?? -1;
     if (idx < 0) return this.reject(sock, "full");
 
-    const sim = (this.sim ??= new Sim(this.levels, this.opts.seed ?? randomInt(1, 2 ** 31), 1));
+    const sim = (this.sim ??= new Sim(this.levels, this.opts.seed ?? randomInt(1, 2 ** 31), {
+      playerCount: 1,
+      superMode: this.opts.superMode === true,
+    }));
     if (idx >= sim.state.players.length) sim.addPlayer();
 
     const old = this.seats[idx];
@@ -292,6 +320,17 @@ export class Room {
     }
   }
 
+  /** The true ending opens the Super room; reported once per Room instance, a failing sink never stops the game. */
+  private reportUnlock(sim: Sim): void {
+    if (this.unlockReported || sim.state.ending !== "true") return;
+    this.unlockReported = true;
+    try {
+      this.opts.unlocks?.unlockSuper(new Date(this.now()).toISOString());
+    } catch (err) {
+      console.error(`room ${this.code}: recording the unlock failed`, err);
+    }
+  }
+
   private kick(seat: Seat, sock: SocketLike): void {
     this.send(sock, { t: "err", code: "badmsg" });
     this.closeQuietly(sock);
@@ -340,6 +379,7 @@ export class Room {
     }
     this.pending.push(...sim.step([this.seats[0]?.buttons ?? 0, this.seats[1]?.buttons ?? 0]));
     this.recordRun(sim);
+    this.reportUnlock(sim);
     if (sim.state.tick % SNAPSHOT_EVERY === 0) this.broadcastSnapshot(sim);
   }
 

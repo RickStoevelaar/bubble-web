@@ -30,7 +30,7 @@ describe("viewOf", () => {
     expect(v.errorText).toBeNull();
   });
 
-  it.each(["full", "badpin", "badmsg"] as const)("re-shows the join form with the %s error when closed mid-session", (code) => {
+  it.each(["full", "badpin", "badmsg", "locked"] as const)("re-shows the join form with the %s error when closed mid-session", (code) => {
     const v = viewOf({ state: "closed", everJoined: true, error: code });
     expect(v).toEqual({ showJoin: true, statusText: null, errorText: ERROR_TEXT[code] });
   });
@@ -43,6 +43,10 @@ describe("viewOf", () => {
 
   it("keeps the form up (no error) while a new join is connecting", () => {
     expect(viewOf({ state: "connecting", everJoined: true, error: null })).toEqual({ showJoin: true, statusText: null, errorText: null });
+  });
+
+  it("explains the locked Super room", () => {
+    expect(ERROR_TEXT.locked).toBe("That room opens after you beat the game together.");
   });
 
   it("uses the friendlier full-room wording", () => {

@@ -268,7 +268,7 @@ export class Connection {
       case "err": {
         const code = (msg as Extract<ServerMsg, { t: "err" }>).code;
         if (code === "ratelimit") return this.rateLimited();
-        if (code === "badpin" || code === "full" || code === "badmsg") return this.terminal(code);
+        if (code === "badpin" || code === "full" || code === "badmsg" || code === "locked") return this.terminal(code);
         return;
       }
       default:

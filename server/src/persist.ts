@@ -114,3 +114,37 @@ export class HighScores {
 export function highScoresFile(dir: string): string {
   return join(dir, "highscores.json");
 }
+
+/** What unlocking records: only that Super mode is open and when. No names, tokens or PIN. */
+export interface Unlocks {
+  super: boolean;
+  date: string;
+}
+
+/** Pure: a well-typed record, or the locked state for anything else (missing, corrupt, ill-typed). */
+export function parseUnlocks(raw: unknown): Unlocks {
+  if (typeof raw === "object" && raw !== null) {
+    const r = raw as Partial<Unlocks>;
+    if (typeof r.super === "boolean" && typeof r.date === "string") return { super: r.super, date: r.date };
+  }
+  return { super: false, date: "" };
+}
+
+export function unlocksFile(dir: string): string {
+  return join(dir, "unlocks.json");
+}
+
+/** Unlock flags in one JSON file; reads fresh every time so a hand-edited or externally written file takes effect. */
+export class UnlockStore {
+  constructor(private file: string) {}
+
+  isSuperUnlocked(): boolean {
+    return parseUnlocks(loadJson<unknown>(this.file, undefined)).super;
+  }
+
+  /** Idempotent: the first date is kept and a repeat call writes nothing. */
+  unlockSuper(dateIso: string): void {
+    if (this.isSuperUnlocked()) return;
+    saveJson(this.file, { super: true, date: dateIso } satisfies Unlocks);
+  }
+}

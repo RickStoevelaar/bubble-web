@@ -114,7 +114,36 @@ function playerById(players: PlayerState[], id: number): PlayerState | undefined
   return undefined;
 }
 
-function drawEnemy(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, e: EnemyState, walkFrame: number): void {
+/**
+ * The boss is drawn at 3x its 16 px sprite (48 px, the sim's boss size). A boss without hp fields predates the
+ * boss fight (the recorded golden frame holds one) and keeps the ordinary 16 px draw; every real boss has hp.
+ */
+const BOSS_DRAW_SIZE = 48;
+
+/** Enraged at a third of its hit points or less (the sim's own integer rule); unknown without hp fields. */
+function bossEnraged(e: EnemyState): boolean {
+  return typeof e.hp === "number" && typeof e.maxHp === "number" && e.maxHp > 0 && e.hp * 3 <= e.maxHp;
+}
+
+function drawBoss(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, e: EnemyState, walkFrame: number, roundTicks: number): void {
+  const name = enemySprite("boss", e.angry || bossEnraged(e));
+  if (name === undefined || !hasSprite(name, walkFrame)) return;
+  const o: DrawOptions = { flipX: e.dir === -1 };
+  if (Number.isFinite(e.hp) && Number.isFinite(e.maxHp)) o.size = BOSS_DRAW_SIZE;
+  if (e.state === "spawning") o.alpha = 0.45;
+  else if (e.state === "dead") o.rotate = (e.deadTicks ?? 0) * 0.5;
+  else if ((e.stun ?? 0) > 0 && ((roundTicks >> 2) & 1) === 1) o.alpha = 0.5;
+  drawEx(ctx, sheet, name, walkFrame, e.x, e.y, o);
+}
+
+function drawEnemy(
+  ctx: CanvasRenderingContext2D,
+  sheet: SpriteSheet,
+  e: EnemyState,
+  walkFrame: number,
+  roundTicks: number,
+): void {
+  if (e.type === "boss") return drawBoss(ctx, sheet, e, walkFrame, roundTicks);
   const name = enemySprite(e.type, e.angry);
   if (name === undefined || !hasSprite(name, walkFrame)) return;
   if (e.state === "dead") {
@@ -133,6 +162,12 @@ function drawBubble(
   enemies: EnemyState[],
   roundTicks: number,
 ): void {
+  if (b.kind === "lightning" && b.shot === true) {
+    // A thunder shot (boss rounds) is a flying bolt, not a bubble.
+    const frame = (b.ageTicks >> 1) & 1;
+    if (hasSprite("icon_bolt", frame)) drawEx(ctx, sheet, "icon_bolt", frame, b.x, b.y, { flipX: b.vx < 0 });
+    return;
+  }
   if (b.kind === "letter") {
     const letter = b.letter ?? 0;
     if (hasSprite("bubble_letter", letter)) drawEx(ctx, sheet, "bubble_letter", letter, b.x, b.y);
@@ -280,6 +315,24 @@ function drawHud(
   }
 }
 
+/** Boss hit-point bar: 120x6, top centre under the HUD rows. Only for a boss that reports finite hp and maxHp > 0. */
+const BAR_W = 120;
+const BAR_H = 6;
+const BAR_Y = 2 * TILE + 3;
+function drawBossBar(ctx: CanvasRenderingContext2D, enemies: EnemyState[]): void {
+  const e = enemies.find((x) => x.type === "boss" && x.state !== "dead" && Number.isFinite(x.hp) && Number.isFinite(x.maxHp) && x.maxHp! > 0);
+  if (!e) return;
+  const x = Math.round((FIELD_W - BAR_W) / 2);
+  const inner = BAR_W - 2;
+  const filled = Math.round((inner * Math.min(1, Math.max(0, e.hp! / e.maxHp!))));
+  ctx.fillStyle = "#fffbe0";
+  ctx.fillRect(x, BAR_Y, BAR_W, BAR_H);
+  ctx.fillStyle = "#2a1020";
+  ctx.fillRect(x + 1, BAR_Y + 1, inner, BAR_H - 2);
+  ctx.fillStyle = e.hp! * 3 <= e.maxHp! ? "#ff8a3a" : "#e0583a";
+  if (filled > 0) ctx.fillRect(x + 1, BAR_Y + 1, filled, BAR_H - 2);
+}
+
 /** Secret-room overlay: "SECRET" with the whole seconds left under the round line, and the room's code fragment in 3x glyphs. */
 const FRAGMENT_SIZE = 24;
 const FRAGMENT_ADVANCE = 20;
@@ -350,7 +403,7 @@ export function render(
   }
 
   for (const e of state.enemies) {
-    if (e.state !== "trapped") drawEnemy(ctx, sheet, e, walkFrame);
+    if (e.state !== "trapped") drawEnemy(ctx, sheet, e, walkFrame, state.roundTicks);
   }
   for (const b of state.bubbles) drawBubble(ctx, sheet, b, state.enemies, state.roundTicks);
 
@@ -370,4 +423,5 @@ export function render(
   if (effects) for (const e of effects) drawEffect(ctx, sheet, e);
 
   drawHud(ctx, sheet, state, localPlayer);
+  drawBossBar(ctx, state.enemies);
 }

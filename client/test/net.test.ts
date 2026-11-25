@@ -145,7 +145,7 @@ describe("Connection join", () => {
     c.close();
   });
 
-  it.each(["badpin", "full"] as const)("rejects with %s and never reconnects", async (code) => {
+  it.each(["badpin", "full", "locked"] as const)("rejects with %s and never reconnects", async (code) => {
     const env = makeEnv();
     const c = new Connection("ws://x/ws", env.deps);
     const errors: string[] = [];

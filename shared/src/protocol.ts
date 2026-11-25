@@ -10,4 +10,4 @@ export type ServerMsg =
   | { t: "joined"; playerId: 0 | 1; rejoinToken: string; round: number }
   | { t: "snap"; tick: number; ackSeq: number; state: GameState; events: SimEvent[] }
   | { t: "peer"; playerId: 0 | 1; name: string; connected: boolean }
-  | { t: "err"; code: "badpin" | "full" | "badmsg" | "ratelimit" };
+  | { t: "err"; code: "badpin" | "full" | "badmsg" | "ratelimit" | "locked" };

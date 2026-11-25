@@ -6,9 +6,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { LEVELS } from "@bubble/shared";
 import type { LevelData } from "@bubble/shared";
 import { WebSocketServer } from "ws";
-import { HighScores, createFilePersist, dataDir, highScoresFile } from "./persist";
+import { HighScores, UnlockStore, createFilePersist, dataDir, highScoresFile, unlocksFile } from "./persist";
 import { realTimers } from "./room";
-import type { Timers } from "./room";
+import type { Timers, UnlockSink } from "./room";
 import { RoomManager } from "./rooms";
 import { serveStatic } from "./static";
 import { MAX_MSG_BYTES } from "./validate";
@@ -30,6 +30,8 @@ export interface ServerConfig {
   /** Heartbeat timers/interval, injectable for tests. */
   timers?: Timers;
   heartbeatMs?: number;
+  /** Unlock store; a real one on the data directory by default. */
+  unlocks?: UnlockSink;
 }
 
 export interface RunningServer {
@@ -61,6 +63,7 @@ export async function createServer(config: ServerConfig): Promise<RunningServer>
   const manager = new RoomManager(config.levels ?? loadLevels(), createFilePersist(dir), {
     pin: config.pin,
     scores: new HighScores(highScoresFile(dir)),
+    unlocks: config.unlocks ?? new UnlockStore(unlocksFile(dir)),
   });
   const staticRoot = config.staticRoot ?? DEFAULT_STATIC_ROOT;
 
