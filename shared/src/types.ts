@@ -107,6 +107,8 @@ export interface PlayerState {
   counters: { bubbles: number; jumps: number; distance: number };
   /** Power items earned so far this run; the next one is POWER_ORDER[powerStep % 10], needing (cycle + 1) x its threshold. */
   powerStep: number;
+  /** The three counters as they were when the last power was earned (zeros before the first); the next power's progress is counter - powerBase. */
+  powerBase: { bubbles: number; jumps: number; distance: number };
   /** Ticks left of the score ring (every jump scores while > 0). */
   ringTicks: number;
   /** EXTEND progress: which of the six letters (E X T E N D) this player holds; persists across rounds. */

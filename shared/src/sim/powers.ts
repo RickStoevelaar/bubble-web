@@ -16,7 +16,8 @@ export type PowerEffect =
 
 /**
  * Every power in one place, in rotation order: each player earns them in this order, cycling. A power is
- * earned once the player's `counter` reaches `threshold` x (cycle + 1), where cycle counts completed laps.
+ * earned once the player's `counter` has grown by `threshold` x (cycle + 1) since the previous power was earned
+ * (`PlayerState.powerBase`), where cycle counts completed laps.
  */
 export const POWER_TABLE: Record<PowerId, { counter: CounterKind; threshold: number; effect: PowerEffect }> = {
   boots: { counter: "jumps", threshold: TUNING.powerThreshold.boots, effect: { kind: "flag", flag: "speed" } },
@@ -60,7 +61,7 @@ export function platformSpots(lv: LevelData): { tx: number; ty: number }[] {
 
 /**
  * Once per tick in phase "round": the first alive player (id order) whose next rotation counter has crossed
- * its threshold earns a power item, unless one is already on screen. Draws the rng exactly once per spawn.
+ * its threshold (counted from the previous power: counter - powerBase) earns a power item, unless one is already on screen. Draws the rng exactly once per spawn.
  */
 export function maybeSpawnItem(sim: PowerSim): void {
   const state = sim.state;
@@ -70,11 +71,13 @@ export function maybeSpawnItem(sim: PowerSim): void {
     if (p.state !== "alive") continue;
     const id = POWER_ORDER[p.powerStep % POWER_ORDER.length]!;
     const row = POWER_TABLE[id];
-    if (p.counters[row.counter] < row.threshold * (Math.floor(p.powerStep / POWER_ORDER.length) + 1)) continue;
+    const base = p.powerBase?.[row.counter] ?? 0;
+    if (p.counters[row.counter] - base < row.threshold * (Math.floor(p.powerStep / POWER_ORDER.length) + 1)) continue;
     const spots = platformSpots(sim.currentLevel);
     if (spots.length === 0) return;
     const spot = spots[sim.rng.int(spots.length)]!;
     p.powerStep++;
+    p.powerBase = { bubbles: p.counters.bubbles, jumps: p.counters.jumps, distance: p.counters.distance };
     state.items.push({
       id: state.nextId++,
       x: spot.tx * TILE + TILE / 2,

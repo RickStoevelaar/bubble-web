@@ -34,8 +34,10 @@ function shooter(sim: EnemySim, e: EnemyState, spec: ShooterSpec): void {
     moveBody(sim.currentLevel, e, ENEMY_SIZE);
     if (--e.windup! === 0) {
       const t = nearestAlivePlayer(sim.state, e);
-      if (t) faceToward(e, t);
-      spec.fire(sim, e);
+      if (t) {
+        faceToward(e, t);
+        spec.fire(sim, e);
+      } // no valid target any more (it died or left during the wind-up): no shot, but the cooldown restarts all the same
       e.cooldown = spec.cooldownTicks;
     }
     return;

@@ -71,19 +71,27 @@ export const TUNING = {
   /** Side length (px) of an item's square body, and how long food lies around before vanishing. */
   itemSize: 12,
   foodTtlTicks: 600,
-  /** Power items: lifetime on screen, and the counter value (x cycle number) that earns each one. */
+  /**
+   * Power items: lifetime on screen, and the progress (x cycle number) that earns each one. Progress is counted from the
+   * moment the previous power was earned (PlayerState.powerBase), not from the start of the run.
+   * The three skip umbrellas (parasols) are deliberately a rare reward. Pace measured in the real sim with a pacing bot
+   * (about 35 s per round: 630..1290 px walked, 41..50 bubbles, 9..14 jumps; boots make walking 1.5x faster, so ~1350 px,
+   * 45 bubbles, 12 jumps per round): the small umbrella (3 rounds) lands around round 10 (never before about 7 even for a
+   * fast walker), the medium one (5 rounds) about 25 rounds after it, the large one (7 rounds) about 35 rounds after that,
+   * so one run sees two or three umbrellas, never two within 5 rounds (shared/test/pacing.test.ts holds the arithmetic).
+   */
   powerItemTtlTicks: 720,
   powerThreshold: {
     boots: 8,
     tonicA: 10,
-    parasolS: 400,
+    parasolS: 12000,
     tonicB: 25,
     ring: 30,
     spark: 40,
     tonicC: 55,
-    parasolM: 1200,
+    parasolM: 24000,
     flask: 60,
-    parasolL: 2400,
+    parasolL: 40000,
   },
   /** Score ring: how long it lasts (60 s) and what each jump scores meanwhile. */
   ringTicks: 3600,
@@ -161,6 +169,13 @@ export const TUNING = {
   specialKindWeight: 4,
   letterWeight: 2,
   letterMissingWeight: 4,
+  /**
+   * On a level without any element flag every special bubble is a letter, so the spawn interval is multiplied by this
+   * (flagged levels keep the designed interval). A full EXTEND needs ~8.2 collected letters on average (missing letters
+   * weigh 4 against 1); at the base interval (avg 11.5 s) that was one EXTEND per ~2.6 rounds of 35 s even for a player
+   * who touches every letter; at x2.5 it is ~6.7 rounds for that perfect player and ~8..10 for a realistic one.
+   */
+  letterOnlyIntervalMult: 2.5,
   /** Score for collecting a letter the player already has. */
   duplicateLetterScore: 500,
   /** Water: body size (px), flow speed (px per tick) and how long it flows after landing. */

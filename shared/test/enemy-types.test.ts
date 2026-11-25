@@ -246,6 +246,24 @@ describe("thrower", () => {
     expect(thrown).toBe(0);
     expect(e.x).not.toBe(x0);
   });
+  it.each(["thrower", "breather"] as const)("a %s whose target is gone before the wind-up ends does not fire, and still starts a cooldown", (type) => {
+    const sim = newSim();
+    placePlayer(sim, type === "thrower" ? 104 : 60);
+    addFiller(sim);
+    const e = addEnemy(sim, { type, x: 60, cooldown: 1 });
+    run(sim, 5);
+    expect(e.windup ?? 0).toBeGreaterThan(0);
+    sidelinePlayer(sim); // the target died or left during the wind-up
+    let fired = 0;
+    for (let t = 0; t < 120; t++) {
+      sim.step([0, 0]);
+      fired += sim.state.projectiles.length;
+      if (e.windup === 0 && e.cooldown !== undefined && e.cooldown > 0) break;
+    }
+    expect(e.windup ?? 0).toBe(0);
+    expect(fired).toBe(0);
+    expect(e.cooldown).toBeGreaterThan(0);
+  });
   it("a thrower trapped mid wind-up does not throw after it escapes, and starts a fresh cooldown", () => {
     const sim = newSim();
     placePlayer(sim, 104);

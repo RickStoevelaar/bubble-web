@@ -152,6 +152,8 @@ describe("power item spawning", () => {
     maxCounters(sim);
     const seen: PowerId[] = [];
     for (let i = 0; i < 23; i++) {
+      // progress is counted from the previous power, so every lap needs fresh counter growth
+      for (const p of sim.state.players) p.counters = { bubbles: p.counters.bubbles + 1e9, jumps: p.counters.jumps + 1e9, distance: p.counters.distance + 1e9 };
       run(sim, 1);
       const items = powerItems(sim);
       expect(items).toHaveLength(1);

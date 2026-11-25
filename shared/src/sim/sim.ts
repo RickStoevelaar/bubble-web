@@ -36,6 +36,7 @@ function newPlayer(id: 0 | 1): PlayerState {
     powers: { speed: false, fastBubble: false, longBubble: false, rapidFire: false },
     counters: { bubbles: 0, jumps: 0, distance: 0 },
     powerStep: 0,
+    powerBase: { bubbles: 0, jumps: 0, distance: 0 },
     ringTicks: 0,
     letters: newLetters(),
     deathlessSince: 1,
@@ -49,11 +50,26 @@ function repairPlayer(p: Partial<PlayerState>): void {
   const c: Partial<PlayerState["counters"]> = p.counters ?? {};
   p.counters = { bubbles: count(c.bubbles), jumps: count(c.jumps), distance: count(c.distance) };
   p.powerStep = count(p.powerStep);
+  // A save from before the snapshot existed: nothing earned yet means zeros; otherwise start counting now (no instant power).
+  const base: Partial<PlayerState["powerBase"]> = p.powerBase ?? (p.powerStep ? p.counters : {});
+  const c0 = p.counters;
+  p.powerBase = {
+    bubbles: Math.min(count(base.bubbles), c0.bubbles),
+    jumps: Math.min(count(base.jumps), c0.jumps),
+    distance: Math.min(count(base.distance), c0.distance),
+  };
   p.ringTicks = count(p.ringTicks);
   p.letters = repairLetters(p.letters);
   p.deathlessSince = Number.isFinite(p.deathlessSince) ? Math.max(1, Math.floor(p.deathlessSince!)) : 1;
   const w: Partial<PlayerState["powers"]> = p.powers ?? {};
   p.powers = { speed: w.speed === true, fastBubble: w.fastBubble === true, longBubble: w.longBubble === true, rapidFire: w.rapidFire === true };
+  // Keys added by the repairs above (an older save) go to their place in the fresh player's order, so a restored state serializes like a created one.
+  const order = Object.keys(newPlayer(0));
+  const rec = p as Record<string, unknown>;
+  const kept = order.filter((k) => k in rec).map((k) => [k, rec[k]] as const);
+  const extra = Object.keys(rec).filter((k) => !order.includes(k)).map((k) => [k, rec[k]] as const);
+  for (const k of Object.keys(rec)) delete rec[k];
+  for (const [k, v] of [...kept, ...extra]) rec[k] = v;
 }
 
 /** Places a player standing on the lowest floor in the spawn column. */
@@ -248,6 +264,7 @@ export class Sim {
       p.powers = { speed: false, fastBubble: false, longBubble: false, rapidFire: false };
       p.counters = { bubbles: 0, jumps: 0, distance: 0 };
       p.powerStep = 0;
+      p.powerBase = { bubbles: 0, jumps: 0, distance: 0 };
       p.ringTicks = 0;
       p.letters = newLetters();
       p.deathlessSince = this.state.round;

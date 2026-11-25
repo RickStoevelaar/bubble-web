@@ -142,11 +142,14 @@ export function stepSpecialSpawns(sim: SpecialSim): void {
   if (state.phase !== "round" || state.secret || isBossRound(sim.currentLevel)) return;
   if (--state.specialTimer > 0) return;
   const rng = sim.rng;
-  state.specialTimer = TUNING.specialIntervalMin + rng.int(TUNING.specialIntervalMax - TUNING.specialIntervalMin);
+  const flags = sim.currentLevel.flags;
+  const letterOnly = !(flags?.waterBubbles || flags?.fireBubbles || flags?.lightningBubbles);
+  // Same single draw either way; a letters-only level just waits longer (see TUNING.letterOnlyIntervalMult).
+  const interval = TUNING.specialIntervalMin + rng.int(TUNING.specialIntervalMax - TUNING.specialIntervalMin);
+  state.specialTimer = letterOnly ? Math.floor(interval * TUNING.letterOnlyIntervalMult) : interval;
   if (state.bubbles.filter((b) => b.kind !== "normal" && !b.shot).length >= TUNING.maxSpecialBubbles) return;
   const y = TUNING.specialLaneMinY + rng.int(TUNING.specialLaneSpan);
   const x = rng.int(2) === 0 ? TUNING.specialEdgeX : FIELD_W - TUNING.specialEdgeX;
-  const flags = sim.currentLevel.flags;
   const kinds: BubbleState["kind"][] = [];
   const weights: number[] = [];
   const add = (k: BubbleState["kind"], w: number, on: boolean | undefined): void => {
