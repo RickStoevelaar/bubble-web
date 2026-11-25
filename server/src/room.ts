@@ -67,6 +67,8 @@ export interface RoomOptions {
 }
 
 export const SUSPEND_AFTER_MS = 10_000;
+/** A failed unlock write is retried from the tick loop no sooner than this many ms (injected clock) after the last try. */
+export const UNLOCK_RETRY_MS = 5000;
 export const PIN_FAIL_LIMIT = 5;
 export const PIN_WINDOW_MS = 60_000;
 const SNAPSHOT_EVERY = TICK_RATE / SNAPSHOT_RATE;
@@ -181,6 +183,10 @@ export class Room {
   private scoreRecorded = false;
   /** True once this Room instance has reported the true ending (the store itself is idempotent). */
   private unlockReported = false;
+  /** ISO date of the first observation of the true ending; retries reuse it. Set once. */
+  private unlockDate?: string;
+  private unlockLastTry = 0;
+  private unlockFailing = false;
   private loop?: unknown;
   private loopStart = 0;
   private loopTicks = 0;
@@ -320,14 +326,24 @@ export class Room {
     }
   }
 
-  /** The true ending opens the Super room; reported once per Room instance, a failing sink never stops the game. */
-  private reportUnlock(sim: Sim): void {
+  /**
+   * The true ending opens the Super room. The date is fixed at the first observation; the flag is set only once the
+   * write succeeded. A failed write is retried every UNLOCK_RETRY_MS (and once more on suspend); never throws.
+   */
+  private reportUnlock(sim: Sim, final = false): void {
     if (this.unlockReported || sim.state.ending !== "true") return;
-    this.unlockReported = true;
+    const now = this.now();
+    if (this.unlockDate === undefined) this.unlockDate = new Date(now).toISOString();
+    else if (!final && now - this.unlockLastTry < UNLOCK_RETRY_MS) return;
+    this.unlockLastTry = now;
     try {
-      this.opts.unlocks?.unlockSuper(new Date(this.now()).toISOString());
+      this.opts.unlocks?.unlockSuper(this.unlockDate);
+      this.unlockReported = true;
+      if (this.unlockFailing) console.error(`room ${this.code}: unlock recorded after earlier errors`);
+      this.unlockFailing = false;
     } catch (err) {
-      console.error(`room ${this.code}: recording the unlock failed`, err);
+      if (!this.unlockFailing) console.error(`room ${this.code}: recording the unlock failed (will retry)`, err);
+      this.unlockFailing = true;
     }
   }
 
@@ -434,6 +450,7 @@ export class Room {
     if (this.dormant) return;
     this.stop();
     this.dormant = true;
+    if (this.sim) this.reportUnlock(this.sim, true);
     try {
       if (this.sim) {
         if (this.sim.state.runOver) this.persist.remove(this.code);

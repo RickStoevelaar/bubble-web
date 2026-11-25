@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { createServer } from "../src/index";
 import { UnlockStore, parseUnlocks, unlocksFile } from "../src/persist";
-import { PIN_FAIL_LIMIT, Room } from "../src/room";
+import { PIN_FAIL_LIMIT, Room, UNLOCK_RETRY_MS } from "../src/room";
 import { RoomManager } from "../src/rooms";
 import { FakeSocket, FakeTimers, MemPersist, PIN, joinMsg, makeRoom, ticks } from "./helpers";
 
@@ -118,19 +118,107 @@ describe("Room unlock sink", () => {
     expect(u.calls).toEqual([]);
   });
 
-  it("a throwing sink does not break the tick loop", () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { room } = bossRoom({
-      unlockSuper: () => {
-        throw new Error("disk");
+  /** A sink that throws its first `failures` calls, then succeeds. */
+  function flaky(failures: number) {
+    const attempts: string[] = [];
+    let ok = 0;
+    return {
+      attempts,
+      get successes() {
+        return ok;
       },
-    });
+      unlockSuper(d: string) {
+        attempts.push(d);
+        if (attempts.length <= failures) throw new Error("disk");
+        ok++;
+      },
+    };
+  }
+  const twoSeats = (room: Room) => {
     room.join(new FakeSocket("1"), joinMsg());
     room.join(new FakeSocket("2"), joinMsg({ name: "Amy" }));
     ticks(room, 2);
-    expect(() => killBoss(room)).not.toThrow();
-    expect(log).toHaveBeenCalledTimes(1);
-    log.mockRestore();
+  };
+
+  describe("when the write fails", () => {
+    it("retries only after UNLOCK_RETRY_MS on the injected clock, with the original date, until it succeeds, then stops", () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const sink = flaky(2);
+      const t0 = Date.UTC(2026, 6, 1, 12);
+      const { room, clock } = bossRoom(sink, { t: t0 });
+      twoSeats(room);
+      killBoss(room);
+      expect(room.sim!.state.ending).toBe("true");
+      expect(sink.attempts).toEqual([new Date(t0).toISOString()]);
+      ticks(room, 200); // many ticks, no clock movement: no retry
+      clock.t = t0 + UNLOCK_RETRY_MS - 1;
+      ticks(room, 50);
+      expect(sink.attempts).toHaveLength(1);
+      clock.t = t0 + UNLOCK_RETRY_MS;
+      ticks(room, 5);
+      expect(sink.attempts).toHaveLength(2); // second failure
+      clock.t = t0 + UNLOCK_RETRY_MS + 100;
+      ticks(room, 50);
+      expect(sink.attempts).toHaveLength(2);
+      clock.t = t0 + 2 * UNLOCK_RETRY_MS;
+      ticks(room, 5);
+      expect(sink.attempts).toHaveLength(3);
+      expect(sink.successes).toBe(1);
+      clock.t = t0 + 10 * UNLOCK_RETRY_MS;
+      ticks(room, 100);
+      expect(sink.attempts).toHaveLength(3); // never again after success
+      expect(new Set(sink.attempts)).toEqual(new Set([new Date(t0).toISOString()]));
+      // one failure line for the whole streak (plus at most one recovery line)
+      const failureLines = log.mock.calls.filter((c) => String(c[0]).includes("failed"));
+      expect(failureLines).toHaveLength(1);
+      log.mockRestore();
+    });
+
+    it("a sink that always throws never crashes the loop, logs once, and never blocks suspend", () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const sink = flaky(Infinity);
+      const t0 = Date.UTC(2026, 6, 1, 12);
+      const { room, clock } = bossRoom(sink, { t: t0 });
+      twoSeats(room);
+      killBoss(room);
+      for (let i = 1; i <= 6; i++) {
+        clock.t = t0 + i * UNLOCK_RETRY_MS;
+        expect(() => ticks(room, 3)).not.toThrow();
+      }
+      expect(sink.attempts.length).toBe(7);
+      expect(log.mock.calls.filter((c) => String(c[0]).includes("failed"))).toHaveLength(1);
+      expect(() => room.suspend()).not.toThrow();
+      expect(room.dormant).toBe(true);
+      expect(sink.attempts.length).toBe(8); // one final try on suspend
+      log.mockRestore();
+    });
+
+    it("suspend while a write is pending makes one final attempt with the original date and succeeds", () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const sink = flaky(1);
+      const t0 = Date.UTC(2026, 6, 1, 12);
+      const { room, clock } = bossRoom(sink, { t: t0 });
+      twoSeats(room);
+      killBoss(room);
+      clock.t = t0 + 1000;
+      room.suspend();
+      expect(sink.attempts).toEqual([new Date(t0).toISOString(), new Date(t0).toISOString()]);
+      expect(sink.successes).toBe(1);
+      log.mockRestore();
+    });
+
+    it("a bad ending never calls the sink, on tick retries or on suspend", () => {
+      const sink = flaky(0);
+      const { room, clock } = bossRoom(sink);
+      room.join(new FakeSocket(), joinMsg());
+      ticks(room, 2);
+      killBoss(room);
+      expect(room.sim!.state.ending).toBe("bad");
+      clock.t += 10 * UNLOCK_RETRY_MS;
+      ticks(room, 20);
+      room.suspend();
+      expect(sink.attempts).toEqual([]);
+    });
   });
 });
 
