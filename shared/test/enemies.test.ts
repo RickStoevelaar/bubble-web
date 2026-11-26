@@ -208,7 +208,7 @@ describe("trapping", () => {
     expect(x0).not.toBe(x1);
     expect(dir === 1 || dir === -1).toBe(true);
   });
-  it("escapes angry when the bubble expires", () => {
+  it("a trapped bubble is not popped by bubbleLifeTicks (the enemy's escape timer governs)", () => {
     const sim = newSim();
     farFromPlayer(sim);
     addFiller(sim);
@@ -216,13 +216,43 @@ describe("trapping", () => {
     addBubble(sim, {
       x: 100,
       y: 100,
-      ageTicks: TUNING.bubbleLifeTicks - 1,
+      ageTicks: TUNING.bubbleLifeTicks + 50,
       trapped: { type: "walker", escapeIn: 1000, enemyId: e.id },
     });
     run(sim, 1);
+    expect(sim.state.bubbles).toHaveLength(1);
+    expect(e.state).toBe("trapped");
+  });
+  it("an empty bubble still pops at bubbleLifeTicks", () => {
+    const sim = newSim();
+    farFromPlayer(sim);
+    addFiller(sim);
+    addBubble(sim, { x: 100, y: 100, ageTicks: TUNING.bubbleLifeTicks - 1 });
+    run(sim, 1);
     expect(sim.state.bubbles).toHaveLength(0);
+  });
+  it("trapping lasts exactly bubbleEscapeTicks (450 = 7.5 s): trapped at N-1, escaped at N", () => {
+    expect(TUNING.bubbleEscapeTicks).toBeGreaterThanOrEqual(360);
+    expect(TUNING.bubbleEscapeTicks).toBeLessThanOrEqual(480);
+    const sim = newSim();
+    farFromPlayer(sim);
+    addFiller(sim);
+    const e = addEnemy(sim);
+    const b = addBubble(sim, { phase: "launch", x: 100, vx: 1 });
+    run(sim, 3);
+    expect(e.state).toBe("trapped");
+    const left = b.trapped!.escapeIn;
+    run(sim, left - 1);
+    expect(e.state).toBe("trapped");
+    expect(sim.state.bubbles).toHaveLength(1);
+    run(sim, 1);
     expect(e.state).toBe("active");
     expect(e.angry).toBe(true);
+    expect(sim.state.bubbles).toHaveLength(0);
+  });
+  it("the flash window is the last bubbleWarnTicks of the escape timer", () => {
+    expect(TUNING.bubbleWarnTicks).toBe(90);
+    expect(TUNING.bubbleWarnTicks).toBeLessThan(TUNING.bubbleEscapeTicks);
   });
 });
 

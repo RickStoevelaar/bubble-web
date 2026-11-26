@@ -101,6 +101,39 @@ describe("firing", () => {
   });
 });
 
+describe("blow distance", () => {
+  const blown = (powers: Partial<{ longBubble: boolean; fastBubble: boolean }> = {}) => {
+    const sim = newSim();
+    const p = sim.state.players[0]!;
+    p.x = 40;
+    p.facing = 1;
+    Object.assign(p.powers, powers);
+    run(sim, 1, BTN.F);
+    const x0 = sim.state.bubbles[0]!.x;
+    run(sim, 60);
+    const b = sim.state.bubbles[0]!;
+    expect(b.phase).toBe("float");
+    return b.x - x0;
+  };
+  it("a plain blown bubble travels 60 px past its first position (was 30), about a quarter of the field", () => {
+    const d = blown();
+    expect(d).toBeGreaterThanOrEqual(54);
+    expect(d).toBeLessThanOrEqual(63);
+  });
+  it("long and fast bubble powers scale from the new base", () => {
+    const base = blown();
+    // Measured after the first (spawn) tick, so base 57 = 19 x 3 px, long 87, fast 85.5.
+    expect(blown({ longBubble: true })).toBeCloseTo(base + 0.5 * 60, 5);
+    expect(blown({ fastBubble: true })).toBeCloseTo(base * 1.5, 5);
+  });
+  it("the bubble is still in its launch phase (able to trap) at the end of the blow", () => {
+    const sim = newSim();
+    run(sim, 1, BTN.F);
+    run(sim, TUNING.bubbleLaunchTicks - 2);
+    expect(sim.state.bubbles[0]!.phase).toBe("launch");
+  });
+});
+
 describe("bubble lifecycle", () => {
   it("transitions launch to float after launch ticks, then rises", () => {
     const sim = newSim();

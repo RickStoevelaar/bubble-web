@@ -80,7 +80,7 @@ export function stepBubbles(
   for (const b of state.bubbles) {
     if (b.shot) continue; // thunder shots are stepped (and removed) by stepShots
     b.ageTicks++;
-    if (b.ageTicks >= (b.kind === "normal" ? TUNING.bubbleLifeTicks : TUNING.specialBubbleLifeTicks)) {
+    if (!b.trapped && b.ageTicks >= (b.kind === "normal" ? TUNING.bubbleLifeTicks : TUNING.specialBubbleLifeTicks)) {
       dead.add(b.id);
       releaseTrapped(state, b);
       events.push({ kind: "pop", x: b.x, y: b.y });

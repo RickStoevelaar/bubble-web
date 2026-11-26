@@ -180,7 +180,7 @@ function drawBubble(
   const trapped = b.trapped;
   if (trapped) {
     const owner = enemyById(enemies, trapped.enemyId);
-    const flashing = trapped.escapeIn < 60 && (roundTicks >> 2) % 2 === 0;
+    const flashing = trapped.escapeIn < TUNING.bubbleWarnTicks && (roundTicks >> 2) % 2 === 0;
     const inner = enemySprite(trapped.type, flashing || (owner?.angry ?? false));
     if (inner !== undefined && hasSprite(inner, frame)) drawEx(ctx, sheet, inner, frame, b.x, b.y, TRAPPED_OPTS);
   }

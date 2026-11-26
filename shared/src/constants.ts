@@ -25,7 +25,8 @@ export const TUNING = {
   maxFall: 3.2,
   fireCooldownTicks: 18,
   bubbleLaunchSpeed: 3.0,
-  bubbleLaunchTicks: 10,
+  /** Launch phase length: 20 ticks x 3 px = 60 px blown distance (was 10 ticks = 30 px); long-bubble scales it. */
+  bubbleLaunchTicks: 20,
   bubbleRise: 0.25,
   bubbleLifeTicks: 360,
   bubbleRadius: 7,
@@ -41,7 +42,13 @@ export const TUNING = {
   bubbleDamping: 0.9,
   /** Fraction of overlap resolved per tick when bubbles stack. */
   bubbleStackPush: 0.5,
-  bubbleEscapeTicks: 60,
+  /**
+   * How long a trapped enemy stays in its bubble (7.5 s), counted from the trap. A trapped bubble is governed by this alone
+   * (bubbleLifeTicks only applies to empty bubbles), so it can never pop before the enemy would escape.
+   */
+  bubbleEscapeTicks: 450,
+  /** The trapped enemy flashes during the last bubbleWarnTicks (1.5 s) before it escapes. */
+  bubbleWarnTicks: 90,
   angerSpeedMult: 1.5,
   invulnTicks: 120,
   respawnTicks: 90,

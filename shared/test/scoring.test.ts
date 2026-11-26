@@ -149,12 +149,12 @@ describe("chain pops", () => {
   });
 
   it("self-expiry and escape pops neither score nor cascade, and release the enemy angry", () => {
-    for (const mode of ["expire", "escape"] as const) {
+    for (const mode of ["escape"] as const) {
       const sim = newSim();
       addFiller(sim);
       park(sim);
-      const a = trap(sim, 100, 150, "walker", mode === "expire" ? { ageTicks: TUNING.bubbleLifeTicks - 1 } : {});
-      if (mode === "escape") a.b.trapped!.escapeIn = 1;
+      const a = trap(sim, 100, 150, "walker");
+      if (mode === "escape") a.b.trapped!.escapeIn = 1; // a trapped bubble is governed by escapeIn, not bubbleLifeTicks
       const c = trap(sim, 114, 150);
       const ev = run(sim, 1);
       expect(sim.state.players[0]!.score).toBe(0);
