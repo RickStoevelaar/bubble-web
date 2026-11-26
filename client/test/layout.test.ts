@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FIELD_W } from "@bubble/shared";
-import { computeLayout, MIN_DECK_CSS_HEIGHT } from "../src/render/layout";
+import { computeLayout, MIN_DECK_CSS_HEIGHT, MIN_MARGIN_W } from "../src/render/layout";
 
 describe("computeLayout", () => {
   it("portrait phone: integer scale and a deck of at least 200 css px", () => {
@@ -111,5 +111,34 @@ describe("computeLayout", () => {
         }
       }
     }
+  });
+});
+
+describe("landscape phones", () => {
+  const phones: [number, number, number][] = [
+    [844, 390, 3],
+    [915, 412, 2.625],
+    [800, 360, 3],
+    [800, 360, 2],
+  ];
+  it("fills at least 92% of the height, stays inside the window and keeps side columns for the controls", () => {
+    for (const [w, h, dpr] of phones) {
+      const l = computeLayout(w, h, dpr);
+      const tag = `${w}x${h}@${dpr}`;
+      expect(l.mode, tag).toBe("wide");
+      expect(l.deckRect, tag).toBeNull();
+      expect(l.fieldH / h, tag).toBeGreaterThanOrEqual(0.92);
+      expect(l.gameY + l.fieldH, tag).toBeLessThanOrEqual(h + 1e-6);
+      expect(l.gameX, tag).toBeGreaterThanOrEqual(MIN_MARGIN_W - 1);
+      expect(w - l.gameX - l.fieldW, tag).toBeGreaterThanOrEqual(MIN_MARGIN_W - 1);
+      expect(l.cssScale * FIELD_W).toBeCloseTo(l.fieldW, 8);
+    }
+    // 800x360@3 was 4x (299 of 360 px tall, 83%); now fits the height at 4.82x.
+    expect(computeLayout(800, 360, 3).fieldH).toBeGreaterThan(0.99 * 360);
+  });
+  it("a 1280x720 desktop at dpr 1 keeps strict integer scale", () => {
+    const l = computeLayout(1280, 720, 1);
+    expect(l.scale).toBe(3);
+    expect(l.fieldW).toBe(768);
   });
 });

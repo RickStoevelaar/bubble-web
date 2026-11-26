@@ -21,8 +21,10 @@ export function planScreenLayout(
   winH: number,
   touchCapable: boolean,
   safeBottom: number,
+  safeLeft = 0,
+  safeRight = 0,
 ): ScreenPlan {
-  const zones = screen === "game" ? computeTouchZones(l, winW, winH, touchCapable, safeBottom) : null;
+  const zones = screen === "game" ? computeTouchZones(l, winW, winH, touchCapable, safeBottom, safeLeft, safeRight) : null;
   const deckBox = zones ? (l.mode === "portrait" ? l.deckRect : { x: 0, y: 0, width: winW, height: winH }) : null;
   return {
     zones,

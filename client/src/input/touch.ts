@@ -1,5 +1,5 @@
 import { BTN } from "@bubble/shared";
-import type { Layout, Rect } from "../render/layout";
+import { MIN_MARGIN_W as LAYOUT_MIN_MARGIN_W, type Layout, type Rect } from "../render/layout";
 import { drawDeck } from "./touch-draw";
 
 /*
@@ -53,7 +53,7 @@ export const MAX_BUTTON_RADIUS = 64;
 /** Share of the deck width given to the slide zone in portrait. */
 export const SLIDE_FRAC = 0.45;
 /** Landscape margin (per side, CSS px) needed to put controls beside the field instead of over it. */
-export const MIN_MARGIN_W = 120;
+export const MIN_MARGIN_W = LAYOUT_MIN_MARGIN_W;
 const EDGE_PAD = 8;
 const BUTTON_GAP = 10;
 
@@ -99,6 +99,8 @@ export function computeTouchZones(
   winH: number,
   touchPrimary: boolean,
   safeBottom = 0,
+  safeLeft = 0,
+  safeRight = 0,
 ): TouchZones | null {
   const usableH = Math.max(0, winH - safeBottom);
 
@@ -126,8 +128,9 @@ export function computeTouchZones(
   const right = winW - (layout.gameX + layout.fieldW);
 
   if (Math.min(left, right) >= MIN_MARGIN_W) {
-    const l = inset({ x: 0, y: 0, width: left, height: usableH }, EDGE_PAD);
-    const btn = placeButtons(inset({ x: winW - right, y: 0, width: right, height: usableH }, EDGE_PAD));
+    // Notch insets keep the controls out of the cut-out; the columns hug the screen edges (thumbs rest there).
+    const l = inset({ x: safeLeft, y: 0, width: Math.max(0, left - safeLeft), height: usableH }, EDGE_PAD);
+    const btn = placeButtons(inset({ x: winW - right, y: 0, width: Math.max(0, right - safeRight), height: usableH }, EDGE_PAD));
     if (!btn) return null;
     return {
       slide: { x: l.left, y: l.top, width: l.right - l.left, height: l.bottom - l.top },

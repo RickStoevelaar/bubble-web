@@ -320,3 +320,39 @@ describe("TouchTracker (ownership and stickiness)", () => {
     expect(tr.owns(99)).toBe(false);
   });
 });
+
+describe("landscape phones: controls in the side columns, never over the field", () => {
+  const phones: [number, number, number][] = [
+    [844, 390, 3],
+    [915, 412, 2.625],
+    [800, 360, 3],
+    [800, 360, 2],
+  ];
+  it("slide pad left, JUMP and BUBBLE right, both outside the field and inside the window", () => {
+    for (const [w, h, dpr] of phones) {
+      const l = computeLayout(w, h, dpr);
+      const z = need(computeTouchZones(l, w, h, true));
+      const tag = `${w}x${h}@${dpr}`;
+      expect(z.overlay, tag).toBe(false);
+      expect(z.slide.x + z.slide.width, tag).toBeLessThanOrEqual(l.gameX + 1e-9);
+      for (const c of [z.jump, z.bubble]) {
+        expect(c.cx - c.r, tag).toBeGreaterThanOrEqual(l.gameX + l.fieldW - 1e-9);
+        expect(c.cx + c.r, tag).toBeLessThanOrEqual(w + 1e-9);
+        expect(c.cy + c.r, tag).toBeLessThanOrEqual(h + 1e-9);
+        expect(c.r, tag).toBeGreaterThanOrEqual(MIN_BUTTON_RADIUS);
+      }
+    }
+  });
+  it("notch insets move both columns inward", () => {
+    const l = computeLayout(844, 390, 3);
+    const flat = need(computeTouchZones(l, 844, 390, true));
+    const notch = need(computeTouchZones(l, 844, 390, true, 0, 44, 44));
+    expect(notch.slide.x).toBeGreaterThanOrEqual(flat.slide.x + 44 - 1e-9);
+    expect(notch.bubble.cx + notch.bubble.r).toBeLessThanOrEqual(844 - 44 + 1e-9);
+  });
+  it("a mouse desktop 1280x720 gets no controls; a touch-capable one gets side columns", () => {
+    const l = computeLayout(1280, 720, 1);
+    expect(computeTouchZones(l, 1280, 720, false)).toBeNull();
+    expect(need(computeTouchZones(l, 1280, 720, true)).overlay).toBe(false);
+  });
+});

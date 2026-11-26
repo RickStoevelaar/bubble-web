@@ -113,6 +113,8 @@ function boot(): void {
   /** Bottom inset (iOS home indicator) via the #safe probe, whose padding is env(safe-area-inset-bottom). */
   const safeBottom = (): number => parseFloat(getComputedStyle(el("safe")).paddingBottom) || 0;
 
+  const safeSide = (side: "paddingLeft" | "paddingRight"): number => parseFloat(getComputedStyle(el("safe"))[side]) || 0;
+
   const actionsBox = el<HTMLElement>("gameover-actions");
   const layout = () => {
     const dpr = window.devicePixelRatio || 1;
@@ -127,7 +129,7 @@ function boot(): void {
     canvas.style.height = `${l.fieldH}px`;
     ctx.setTransform(l.scale, 0, 0, l.scale, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    const plan = planScreenLayout(flow.screen, l, w, h, coarse.matches || seenTouch, safeBottom());
+    const plan = planScreenLayout(flow.screen, l, w, h, coarse.matches || seenTouch, safeBottom(), safeSide("paddingLeft"), safeSide("paddingRight"));
     touch.setZones(plan.zones); // releases held touches if the zones moved under them (rotation)
     deckView.setLayout(plan.deckBox, dpr, plan.deckPassThrough);
     if (plan.actions) {

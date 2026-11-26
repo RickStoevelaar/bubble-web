@@ -35,6 +35,11 @@ export const PORTRAIT_TOP_MARGIN = 4;
  * judged better than a 65-70% wide field).
  */
 export const PORTRAIT_MIN_FILL = 0.92;
+/** Landscape: same idea for the height, only at dpr >= 2 (phones; a 1x desktop keeps strict integer pixels). */
+export const LANDSCAPE_MIN_FILL = 0.92;
+export const LANDSCAPE_MIN_DPR = 2;
+/** Landscape margin (per side, CSS px) needed to put the touch controls beside the field instead of over it. */
+export const MIN_MARGIN_W = 120;
 
 /**
  * Pure layout: the scale is an integer in DEVICE pixels so the field stays
@@ -93,11 +98,24 @@ export function computeLayout(winW: number, winH: number, dpr: number = 1): Layo
   }
 
   const scale = Math.max(1, Math.min(maxByWidth, Math.floor((winH * ratio) / FIELD_H)));
-  const fieldW = (scale * FIELD_W) / ratio;
-  const fieldH = (scale * FIELD_H) / ratio;
+  let fieldW = (scale * FIELD_W) / ratio;
+  let fieldH = (scale * FIELD_H) / ratio;
+  let backing = scale;
+  if (ratio >= LANDSCAPE_MIN_DPR && fieldH < winH * LANDSCAPE_MIN_FILL) {
+    // Fractional fit to the height, but keep side columns for the controls if the integer scale had them.
+    const hadMargins = (winW - fieldW) / 2 >= MIN_MARGIN_W;
+    const widthCap = hadMargins ? (winW - 2 * MIN_MARGIN_W) * ratio : devW;
+    const maxDevW = Math.min(widthCap, (winH * ratio * FIELD_W) / FIELD_H);
+    const devFieldW = Math.floor(maxDevW + 1e-9);
+    if (devFieldW > scale * FIELD_W) {
+      fieldW = devFieldW / ratio;
+      fieldH = (devFieldW * FIELD_H) / FIELD_W / ratio;
+      backing = Math.ceil(devFieldW / FIELD_W);
+    }
+  }
   return {
-    scale,
-    cssScale: scale / ratio,
+    scale: backing,
+    cssScale: fieldW / FIELD_W,
     gameX: snap((winW - fieldW) / 2),
     gameY: snap((winH - fieldH) / 2),
     fieldW,
