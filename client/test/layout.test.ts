@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FIELD_W } from "@bubble/shared";
 import { computeLayout, MIN_DECK_CSS_HEIGHT } from "../src/render/layout";
 
 describe("computeLayout", () => {
@@ -10,12 +11,47 @@ describe("computeLayout", () => {
     expect(l.deckRect!.height).toBeGreaterThanOrEqual(MIN_DECK_CSS_HEIGHT);
   });
 
-  it("hidpi phone gets scale 4 (device-pixel integer) with fractional css scale", () => {
+  it("hidpi phone 390x844@3 now fills the full width at a fractional scale (was 4x = 341 of 390 css px)", () => {
     const l = computeLayout(390, 844, 3);
-    expect(l.scale).toBe(4);
-    expect(l.cssScale).toBeCloseTo(4 / 3, 10);
-    expect(l.fieldW).toBeCloseTo(1024 / 3, 6);
-    expect(l.deckRect!.height).toBeGreaterThanOrEqual(200);
+    expect(l.mode).toBe("portrait");
+    expect(l.scale).toBe(5); // backing store: ceil(4.57)
+    expect(l.fieldW).toBeCloseTo(390, 6); // 1170 device px
+    expect(l.cssScale).toBeCloseTo(390 / 256, 10);
+    expect(l.gameX).toBeCloseTo(0, 6);
+    expect(l.deckRect!.height).toBeGreaterThanOrEqual(MIN_DECK_CSS_HEIGHT);
+  });
+
+  it("common phones: field fills at least 92% of the width, never exceeds it, deck stays comfortable", () => {
+    const phones: [number, number, number][] = [
+      [360, 800, 3],
+      [390, 844, 3],
+      [412, 915, 2.625],
+      [360, 800, 2],
+      [320, 568, 2],
+      [390, 844, 1],
+      [768, 1024, 2],
+    ];
+    for (const [w, h, dpr] of phones) {
+      const l = computeLayout(w, h, dpr);
+      const tag = `${w}x${h}@${dpr}`;
+      expect(l.fieldW, tag).toBeLessThanOrEqual(w + 1e-6);
+      expect(l.fieldW / w, tag).toBeGreaterThanOrEqual(0.92);
+      expect(l.deckRect!.height, tag).toBeGreaterThanOrEqual(MIN_DECK_CSS_HEIGHT);
+      expect(l.gameX + l.fieldW, tag).toBeLessThanOrEqual(w + 1e-6);
+    }
+    // Whole-device-pixel cases stay crisp (integer device scale, no fractional stretch).
+    expect(computeLayout(360, 800, 3).fieldW * 3).toBeCloseTo(1024, 6); // 4x
+    expect(computeLayout(412, 915, 2.625).scale).toBe(4);
+    expect(computeLayout(768, 1024, 2).scale).toBe(6);
+    // Fractional fits: 360@2 is 2.81x, 390@1 is 1.52x.
+    expect(computeLayout(360, 800, 2).cssScale * 2).toBeCloseTo(720 / 256, 6);
+    expect(computeLayout(390, 844, 1).cssScale).toBeCloseTo(390 / 256, 6);
+  });
+
+  it("a short portrait window shrinks the field rather than the minimum deck", () => {
+    const l = computeLayout(390, 520, 3);
+    expect(l.deckRect!.height).toBeGreaterThanOrEqual(MIN_DECK_CSS_HEIGHT);
+    expect(l.fieldW).toBeLessThan(390);
   });
 
   it("desktop: no deck, centered field, scale 4", () => {
@@ -57,7 +93,8 @@ describe("computeLayout", () => {
           const tag = `${w}x${h}@${dpr}`;
           expect(Number.isInteger(l.scale), tag).toBe(true);
           expect(l.scale, tag).toBeGreaterThanOrEqual(1);
-          expect(l.cssScale).toBeCloseTo(l.scale / dpr, 10);
+          expect(l.cssScale * FIELD_W).toBeCloseTo(l.fieldW, 8);
+          expect(l.scale, tag).toBe(Math.ceil((l.fieldW * dpr) / FIELD_W - 1e-6));
           expect(l.gameX, tag).toBeGreaterThanOrEqual(-1e-9);
           expect(l.gameY, tag).toBeGreaterThanOrEqual(-1e-9);
           expect(l.gameX + l.fieldW, tag).toBeLessThanOrEqual(w + 1e-6);
