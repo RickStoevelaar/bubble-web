@@ -1,6 +1,6 @@
 import { BTN } from "@bubble/shared";
 import type { InputSource } from "./input";
-import type { TouchPoint, TouchTracker, TouchZones } from "./touch";
+import type { PadVec, TouchPoint, TouchTracker, TouchZones } from "./touch";
 
 /*
  * Touch Events (not Pointer Events): `event.touches` hands over the COMPLETE current set of
@@ -88,9 +88,14 @@ export class TouchInput implements InputSource {
     this.listeners.push([type, h, o]);
   }
 
-  /** Currently pressed buttons (for drawing). */
+  /** Currently pressed buttons (for drawing), including a flick minimum jump hold. */
   get pressed(): number {
-    return this.mask;
+    return this.enabled() ? this.tracker.held(this.now()) : 0;
+  }
+
+  /** Pad vector of the pad thumb for the knob, or null with no pad touch. */
+  get knob(): PadVec | null {
+    return this.tracker.knob();
   }
 
   private onStart(e: TouchEventLike): void {
@@ -126,7 +131,7 @@ export class TouchInput implements InputSource {
   }
 
   private apply(list: TouchListLike): void {
-    const next = this.tracker.update(toPoints(list));
+    const next = this.tracker.update(toPoints(list), this.now());
     const fresh = next & ~this.mask & (BTN.J | BTN.F);
     this.mask = next;
     if (fresh && this.vibrate) {
@@ -148,7 +153,7 @@ export class TouchInput implements InputSource {
       if (this.mask) this.release();
       return 0;
     }
-    return this.mask;
+    return this.tracker.held(this.now());
   }
 
   release(): void {

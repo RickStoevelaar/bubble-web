@@ -3,6 +3,7 @@ import { BTN } from "@bubble/shared";
 import { computeLayout } from "../src/render/layout";
 import { TouchDeck, TouchTracker, computeTouchZones } from "../src/input/touch";
 import { TouchInput } from "../src/input/touch-dom";
+import { FLICK_HOLD_MS, FLICK_MIN_PX } from "../src/input/pad";
 
 type H = (e: unknown) => void;
 type P = { id: number; x: number; y: number };
@@ -40,87 +41,100 @@ function setup() {
   const z = computeTouchZones(l, 390, 844, true)!;
   const tracker = new TouchTracker(new TouchDeck(z));
   const w = fakeTarget();
-  const state = { enabled: true };
-  const input = new TouchInput(w as unknown as Window, tracker, { isEnabled: () => state.enabled });
-  const mid = z.slide.x + z.slide.width / 2;
-  const my = z.slide.y + z.slide.height / 2;
-  return { z, w, input, state, mid, my };
+  const state = { enabled: true, clock: 0 };
+  const input = new TouchInput(w as unknown as Window, tracker, { isEnabled: () => state.enabled, now: () => state.clock });
+  const pad = (vx: number, vy: number, id = 1) => ({ id, x: z.pad.cx + vx * z.pad.r, y: z.pad.cy + vy * z.pad.r });
+  const fire = { id: 9, x: z.bubble.cx, y: z.bubble.cy };
+  return { z, w, input, state, pad, fire };
 }
 
 describe("TouchInput DOM wiring", () => {
-  it("start/move/end produce the right mask over time, with multi-touch", () => {
-    const { z, w, input, mid, my } = setup();
+  it("start/move/end produce the right mask over time, with multi-touch (pad thumb + fire thumb)", () => {
+    const { w, input, state, pad, fire } = setup();
     expect(input.sample()).toBe(0);
-    const a = { id: 1, x: mid - 30, y: my };
+    const a = pad(-0.6, 0);
     expect(w.fire("touchstart", [a])).toBe(true);
     expect(input.sample()).toBe(BTN.L);
-    const b = { id: 2, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [a, b], [b]);
-    expect(input.sample()).toBe(BTN.L | BTN.J);
-    const a2 = { ...a, x: mid + 30 };
-    w.fire("touchmove", [a2, b], [a2]);
-    expect(input.sample()).toBe(BTN.R | BTN.J);
-    const c = { id: 3, x: z.bubble.cx, y: z.bubble.cy };
-    w.fire("touchstart", [a2, b, c], [c]);
+    w.fire("touchstart", [a, fire], [fire]);
+    expect(input.sample()).toBe(BTN.L | BTN.F);
+    const a2 = pad(0.6, -0.6);
+    state.clock = 100;
+    w.fire("touchmove", [a2, fire], [a2]);
     expect(input.sample()).toBe(BTN.R | BTN.J | BTN.F);
-    expect(w.fire("touchend", [a2, c], [b])).toBe(true);
-    expect(input.sample()).toBe(BTN.R | BTN.F);
-    w.fire("touchend", [], [a2, c]);
+    expect(w.fire("touchend", [a2], [fire])).toBe(true);
+    expect(input.sample()).toBe(BTN.R | BTN.J);
+    state.clock = 1000; // past any flick hold
+    w.fire("touchend", [], [a2]);
     expect(input.sample()).toBe(0);
   });
 
-  it("touchcancel releases everything", () => {
-    const { z, w, input } = setup();
-    const b = { id: 2, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [b]);
+  it("a flick is held for FLICK_HOLD_MS of the injected clock even after the thumb is back or lifted", () => {
+    const { w, input, state, pad } = setup();
+    w.fire("touchstart", [pad(0, 0)]);
+    state.clock = 40;
+    w.fire("touchmove", [{ id: 1, x: pad(0, 0).x, y: pad(0, 0).y - FLICK_MIN_PX - 3 }]);
+    expect(input.sample() & BTN.J).toBe(BTN.J);
+    state.clock = 55;
+    w.fire("touchmove", [pad(0, 0)]);
     expect(input.sample()).toBe(BTN.J);
-    w.fire("touchcancel", [], [b]);
+    w.fire("touchend", [], [pad(0, 0)]);
+    state.clock = 40 + FLICK_HOLD_MS - 1;
+    expect(input.sample()).toBe(BTN.J);
+    state.clock = 40 + FLICK_HOLD_MS + 1;
+    expect(input.sample()).toBe(0);
+  });
+
+  it("touchcancel releases everything, including a pending flick", () => {
+    const { w, input, state, pad, fire } = setup();
+    w.fire("touchstart", [pad(0, 0)]);
+    state.clock = 30;
+    w.fire("touchmove", [pad(0, -0.6)]);
+    w.fire("touchstart", [pad(0, -0.6), fire], [fire]);
+    expect(input.sample()).toBe(BTN.J | BTN.F);
+    w.fire("touchcancel", [], [fire]);
     expect(input.sample()).toBe(0);
   });
 
   it("blur and reset() release held touches and ignore them until lifted", () => {
-    const { z, w, input } = setup();
-    const b = { id: 2, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [b]);
+    const { w, input, fire } = setup();
+    w.fire("touchstart", [fire]);
     w.fireSimple("blur");
     expect(input.sample()).toBe(0);
-    w.fire("touchmove", [b]);
+    w.fire("touchmove", [fire]);
     expect(input.sample()).toBe(0);
-    w.fire("touchend", [], [b]);
-    w.fire("touchstart", [b]);
-    expect(input.sample()).toBe(BTN.J);
+    w.fire("touchend", [], [fire]);
+    w.fire("touchstart", [fire]);
+    expect(input.sample()).toBe(BTN.F);
     input.reset();
     expect(input.sample()).toBe(0);
   });
 
   it("does not preventDefault outside the zones (join form keeps working) or while disabled", () => {
-    const { z, w, input, state } = setup();
+    const { w, input, state, fire } = setup();
     expect(w.fire("touchstart", [{ id: 1, x: 5, y: 5 }])).toBe(false);
     expect(input.sample()).toBe(0);
     state.enabled = false;
-    expect(w.fire("touchstart", [{ id: 2, x: z.jump.cx, y: z.jump.cy }])).toBe(false);
+    expect(w.fire("touchstart", [{ id: 2, x: fire.x, y: fire.y }])).toBe(false);
     expect(input.sample()).toBe(0);
   });
 
   it("a touch down when the input gets disabled yields 0 and never sticks", () => {
-    const { z, w, input, state } = setup();
-    const b = { id: 2, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [b]);
+    const { w, input, state, fire } = setup();
+    w.fire("touchstart", [fire]);
     state.enabled = false;
     expect(input.sample()).toBe(0);
-    w.fire("touchend", [], [b]);
+    w.fire("touchend", [], [fire]);
     state.enabled = true;
     expect(input.sample()).toBe(0);
   });
 
   it("setZones (rotation mid-touch) releases the held touch", () => {
-    const { z, w, input } = setup();
-    const b = { id: 2, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [b]);
+    const { w, input, fire } = setup();
+    w.fire("touchstart", [fire]);
     const land = computeTouchZones(computeLayout(844, 390, 3), 844, 390, true)!;
     input.setZones(land);
     expect(input.sample()).toBe(0);
-    w.fire("touchmove", [{ id: 2, x: land.jump.cx, y: land.jump.cy }]);
+    w.fire("touchmove", [{ id: 9, x: land.bubble.cx, y: land.bubble.cy }]);
     expect(input.sample()).toBe(0);
   });
 
@@ -135,7 +149,7 @@ describe("TouchInput DOM wiring", () => {
     expect(w.count()).toBe(0);
   });
 
-  it("haptic tick fires on a fresh JUMP/BUBBLE press only, throttled", () => {
+  it("haptic tick fires on a fresh fire press or jump trigger only, throttled; sliding sideways is silent", () => {
     const l = computeLayout(390, 844, 3);
     const z = computeTouchZones(l, 390, 844, true)!;
     let clock = 0;
@@ -145,22 +159,27 @@ describe("TouchInput DOM wiring", () => {
       vibrate: () => void ticks++,
       now: () => clock,
     });
-    const j = { id: 1, x: z.jump.cx, y: z.jump.cy };
-    w.fire("touchstart", [j]);
+    const b = { id: 1, x: z.bubble.cx, y: z.bubble.cy };
+    w.fire("touchstart", [b]);
     expect(ticks).toBe(1);
-    w.fire("touchmove", [j]);
+    w.fire("touchmove", [b]);
     expect(ticks).toBe(1);
     clock = 5; // inside the throttle window
-    w.fire("touchend", [], [j]);
-    w.fire("touchstart", [j]);
+    w.fire("touchend", [], [b]);
+    w.fire("touchstart", [b]);
     expect(ticks).toBe(1);
     clock = 500;
-    w.fire("touchend", [], [j]);
-    w.fire("touchstart", [j]);
+    w.fire("touchend", [], [b]);
+    w.fire("touchstart", [b]);
     expect(ticks).toBe(2);
-    const slide = { id: 9, x: z.slide.x + 5, y: z.slide.y + 5 };
-    w.fire("touchstart", [j, slide], [slide]);
+    clock = 1000;
+    const side = { id: 9, x: z.pad.cx - z.pad.r * 0.6, y: z.pad.cy };
+    w.fire("touchstart", [b, side], [side]);
     expect(ticks).toBe(2); // movement is not a button press
+    clock = 1500;
+    const up = { id: 9, x: z.pad.cx - z.pad.r * 0.6, y: z.pad.cy - z.pad.r * 0.7 };
+    w.fire("touchmove", [b, up], [up]);
+    expect(ticks).toBe(3); // the jump trigger ticks
   });
 
   it("onTouch is reported once a real touch is seen (touch-primary detection)", () => {
@@ -172,5 +191,14 @@ describe("TouchInput DOM wiring", () => {
     w.fire("touchstart", [{ id: 1, x: 1, y: 1 }]);
     w.fire("touchstart", [{ id: 2, x: 1, y: 1 }]);
     expect(seen).toBe(1);
+  });
+
+  it("exposes the knob vector for drawing", () => {
+    const { w, input, pad } = setup();
+    expect(input.knob).toBeNull();
+    w.fire("touchstart", [pad(0.5, -0.25)]);
+    expect(input.knob).toEqual({ x: 0.5, y: -0.25 });
+    w.fire("touchend", [], [pad(0.5, -0.25)]);
+    expect(input.knob).toBeNull();
   });
 });

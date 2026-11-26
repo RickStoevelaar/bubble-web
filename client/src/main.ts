@@ -362,7 +362,7 @@ function boot(): void {
   const installBtn = installInstallButton(window, el<HTMLButtonElement>("install"));
   const frame = (now: number): void => {
     sampler?.frame(now);
-    deckView.render(touch.pressed);
+    deckView.render(touch.pressed, touch.knob);
     const game = flow.game;
     const screen = flow.screen;
     installBtn.setScreenVisible(screen === "title");

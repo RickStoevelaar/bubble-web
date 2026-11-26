@@ -1,5 +1,5 @@
 import type { Rect } from "../render/layout";
-import type { TouchDeck } from "./touch";
+import type { PadVec, TouchDeck } from "./touch";
 
 /**
  * Owns the deck's OWN canvas (inside the #deck element). The canvas covers `box`: the deck rect in
@@ -13,6 +13,7 @@ export class DeckView {
   private dpr = 1;
   private dirty = true;
   private lastMask = -1;
+  private lastKnob = "";
 
   constructor(
     private readonly host: HTMLElement,
@@ -48,15 +49,17 @@ export class DeckView {
   }
 
   /** Cheap to call every frame. */
-  render(mask: number): void {
-    if (!this.dirty && mask === this.lastMask) return;
+  render(mask: number, knob: PadVec | null = null): void {
+    const k = knob ? `${knob.x.toFixed(3)},${knob.y.toFixed(3)}` : "";
+    if (!this.dirty && mask === this.lastMask && k === this.lastKnob) return;
     this.dirty = false;
     this.lastMask = mask;
+    this.lastKnob = k;
     const { ctx, box } = this;
     if (!ctx || !box) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, -box.x * this.dpr, -box.y * this.dpr);
-    this.deck.draw(ctx, mask);
+    this.deck.draw(ctx, mask, knob);
   }
 }
