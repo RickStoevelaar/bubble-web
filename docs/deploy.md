@@ -89,3 +89,28 @@ Notes:
 - **Backup:** copy `data/` (`tar czf bubble-data-$(date +%F).tgz data`). Safe to do while running; the files are small.
 - **Stop:** `docker compose down` (data stays in `./data`).
 - **Change the PIN:** edit `.env`, then `docker compose up -d` (recreates the container).
+
+## Auto-deploy (optional, cron)
+
+`deploy/autodeploy.sh` follows the tracked branch of the clone on the box. Every 5 minutes it fetches, fast-forwards, rebuilds the image
+if anything in the image changed (code, lockfile, Dockerfile, compose; not docs/tests/tooling), then health-checks
+`https://bubble.167.233.41.250.sslip.io/healthz` through Caddy. Pushing to the tracked branch (`main`) therefore deploys within 5 minutes.
+There is no CI gate: a broken commit is live quickly. A rebuild recreates the container, which drops live rooms (suspended runs resume).
+
+One-time setup on the box (after the routing in section 4 exists, or the first health check fails):
+
+```sh
+git clone https://github.com/RickStoevelaar/bubble-web.git /opt/bubbleweb/app   # private repo: add a read-only deploy key first
+cd /opt/bubbleweb/app && git branch -u origin/main
+cp .env.example .env && nano .env        # PIN, >= 8 alphanumeric
+mkdir -p data && chown 1000:1000 data
+docker compose up -d --build
+chmod +x deploy/autodeploy.sh
+cp deploy/logrotate.conf /etc/logrotate.d/bubbleweb
+crontab -e   # add:
+# */5 * * * * /opt/bubbleweb/app/deploy/autodeploy.sh >> /var/log/bubbleweb-autodeploy.log 2>&1
+```
+
+It stops and asks for a human on: no upstream configured (`git branch -u origin/main`), tracked local edits on the box, a non-fast-forward
+(force-push), a failed rebuild, or a failed health check. On failure the log prints the exact rollback command (last known good commit).
+It never rolls back by itself. Watch with `tail -f /var/log/bubbleweb-autodeploy.log`.

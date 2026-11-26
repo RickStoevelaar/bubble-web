@@ -1,2 +1,5 @@
 # levels.json is generated; keep LF so the sync test is stable under core.autocrlf
 shared/src/levels/levels.json text eol=lf
+
+# shell scripts run on the Linux box: keep LF
+*.sh text eol=lf
