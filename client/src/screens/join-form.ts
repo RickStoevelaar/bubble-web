@@ -136,7 +136,8 @@ export class JoinForm {
 
   private updateHint(): void {
     const on = this.superCode !== "" && this.els.room.value.trim().toUpperCase() === this.superCode;
-    const mine = readSuperCode(this.store, this.superCode); // remembered from the true ending (only ever the real code)
+    const room = this.els.room.value.trim();
+    const mine = room === "" || on ? readSuperCode(this.store, this.superCode) : null; // remembered from the true ending (only ever the real code)
     const text = [on ? SUPER_HINT : "", mine ? `your code: ${mine}` : ""].filter((t) => t !== "").join(" - ");
     this.els.hint.hidden = text === "";
     this.els.hint.textContent = text;

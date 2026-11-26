@@ -125,6 +125,17 @@ describe("Flow: leaving for scores closes the connection once", () => {
     expect(s.conn.closes).toBe(1);
   });
 
+  it("a fresh run's snapshot while on the ending screen (server restarted) goes to scores and closes the connection", () => {
+    const s = setup();
+    s.flow.go({ t: "start" });
+    s.joinOk();
+    s.flow.go({ t: "phase", phase: "ending" });
+    expect(s.flow.screen).toBe("ending");
+    s.flow.go({ t: "phase", phase: "round" });
+    expect(s.flow.screen).toBe("scores");
+    expect(s.conn.closes).toBe(1);
+  });
+
   it("a continue that wins returns to the game without closing", () => {
     const s = setup();
     s.flow.go({ t: "start" });

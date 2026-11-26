@@ -33,7 +33,9 @@ describe("screen machine: transitions", () => {
     expect(next("gameover", ph("ending"))).toBe("ending");
     expect(next("ending", { t: "endingDone" })).toBe("scores");
     expect(next("ending", ph("ending"))).toBe("ending");
-    expect(next("ending", ph("round"))).toBe("ending");
+    // a snapshot of a fresh run (server restarted during the ending) means the finished run is over
+    expect(next("ending", ph("round"))).toBe("scores");
+    expect(next("ending", ph("clearing"))).toBe("scores");
   });
 
   it("a run that is already over seen from the game screen goes straight to scores", () => {

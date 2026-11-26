@@ -46,13 +46,16 @@ export function createFilePersist(dir: string): Persist {
     load: (code) => loadJson<GameState | undefined>(roomFile(dir, code), undefined),
     save: (code, state) => saveJson(roomFile(dir, code), state),
     remove: (code) => {
+      let first: unknown;
       for (const f of [roomFile(dir, code), seatsFile(dir, code)]) {
         try {
           unlinkSync(f);
         } catch (err) {
-          if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+          // both files are always attempted; the first real failure is rethrown afterwards
+          if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== "ENOENT") first ??= err;
         }
       }
+      if (first !== undefined) throw first;
     },
     loadSeats: (code) => {
       const file = seatsFile(dir, code);

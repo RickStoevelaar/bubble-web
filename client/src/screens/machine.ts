@@ -66,6 +66,9 @@ export function next(screen: Screen, ev: ScreenEvent): Screen {
 }
 
 function onPhase(screen: Screen, phase: Phase, runOver: boolean): Screen {
+  // The ending only ever reports phase "ending". Anything else means the server came back with a FRESH run (it was
+  // restarted during the ending and we auto-rejoined): the finished run is over, so leave for the scores.
+  if (screen === "ending") return phase === "ending" ? screen : "scores";
   if (screen !== "game" && screen !== "gameover") return screen; // title/join/scores/ending: stale or irrelevant
   switch (phase) {
     case "ending":

@@ -173,7 +173,7 @@ interface Seat {
   sock?: SocketLike;
   buttons: number;
   lastSeq: number;
-  /** When the holder last disconnected (injected clock). The seat is reserved for SUSPEND_AFTER_MS after that. */
+  /** When the holder disconnected in THIS process (injected clock): reserved for SUSPEND_AFTER_MS after that. Unset for restored seats, which are never reserved by time. */
   leftAt?: number;
 }
 
@@ -269,7 +269,7 @@ export class Room {
     const n = this.sim?.state.players.length ?? 0;
     saved.forEach((e, i) => {
       if (!e || i >= n) return;
-      this.seats[i] = { token: e.token, name: e.name, buttons: 0, lastSeq: 0, leftAt: this.now() };
+      this.seats[i] = { token: e.token, name: e.name, buttons: 0, lastSeq: 0 }; // no leftAt: restored seats are not time-reserved
     });
   }
 
@@ -307,6 +307,7 @@ export class Room {
     // socket is still connected (e.g. a partner watching the credits) the joiner enters that same finished room as
     // before; the restart then happens at the next join into an empty room, i.e. once every connected player has left.
     if (this.sim?.state.runOver && this.connectedCount() === 0) {
+      this.reportUnlock(this.sim, true); // a still-failing unlock write gets its last try before the run is forgotten
       this.sim = this.newSim();
       this.seats = [];
       this.pending = [];
@@ -324,14 +325,17 @@ export class Room {
       reclaim = idx >= 0;
     }
     if (!reclaim) {
-      // A fresh join takes a never-used seat first, else a free seat whose last holder has been gone for at least the
-      // suspend window. A seat whose holder could still come back with their token stays reserved: "full" until then.
+      // A seat whose holder disconnected in this process less than the suspend window ago stays reserved for their
+      // token ("full" until then). Seats restored from a save are not reserved: nobody is known to be coming back.
       const now = this.now();
       const open = (i: number): boolean => {
         const s = this.seats[i];
-        return !s || (!s.sock && now - (s.leftAt ?? -Infinity) >= SUSPEND_AFTER_MS);
+        return !s || (!s.sock && (s.leftAt === undefined || now - s.leftAt >= SUSPEND_AFTER_MS));
       };
-      idx = [0, 1].find((i) => !this.seats[i]) ?? [0, 1].find(open) ?? -1;
+      // Prefer a seat whose hero already exists in the sim (a resumed run is rejoined, not extended with a new hero);
+      // only then a never-used seat, which creates the second hero.
+      const heroes = this.sim?.state.players.length ?? 0;
+      idx = [0, 1].find((i) => i < heroes && open(i)) ?? [0, 1].find(open) ?? -1;
     }
     if (idx < 0) return this.reject(sock, "full");
 

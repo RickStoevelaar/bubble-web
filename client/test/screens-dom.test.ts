@@ -571,6 +571,17 @@ describe("join hint shows the remembered Super code", () => {
     f.room.t.fire("input");
     expect(f.hint.textContent).toBe(`your code: ${SUPER_CODE}`);
   });
+  it("shows the remembered code only for an empty room field or the Super room", () => {
+    const f = formEls();
+    const s = store();
+    s.setItem(CODE_KEY, SUPER_CODE);
+    const form = new JoinForm(f.els, s, SUPER_CODE, () => {}, () => {});
+    form.show();
+    f.room.value = "FAMILY";
+    f.room.t.fire("input");
+    expect(f.hint.hidden).toBe(true);
+    expect(f.hint.textContent).toBe("");
+  });
   it("ignores junk in storage and survives a throwing store", () => {
     const f = formEls();
     const s = store();

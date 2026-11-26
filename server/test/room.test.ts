@@ -287,6 +287,20 @@ describe("suspend and resume", () => {
     expect(snap.state.players[0]!.score).toBe(1234);
   });
 
+  it("a tokenless player resuming a one-player save gets hero 1 back (no second hero is created)", () => {
+    const persist = new MemPersist();
+    const h = makeRoom({}, persist);
+    const a = seat(h);
+    ticks(h.room, 30);
+    a.drop();
+    h.clock.t += SUSPEND_AFTER_MS;
+    h.room.tick();
+    const h2 = makeRoom({}, persist, h.clock);
+    const a2 = seat(h2);
+    expect(a2.of("joined")[0]).toMatchObject({ playerId: 0 });
+    expect(h2.room.sim!.state.players).toHaveLength(1);
+  });
+
   it("does not step the sim while nobody is connected", () => {
     const h = makeRoom();
     const a = seat(h);

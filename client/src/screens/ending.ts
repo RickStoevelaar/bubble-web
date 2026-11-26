@@ -144,7 +144,7 @@ function drawBad(ctx: CanvasRenderingContext2D, sheet: SpriteSheet, ticks: numbe
     }
   });
   drawHill(ctx, BAD_FAR, mix("#3a2a5a", "#10142e", k), mix("#5a4a7a", "#1c2248", k));
-  drawEx(ctx, sheet, "npc_friend", (ticks >> 5) & 1, 215, hillTop(BAD_FAR, 215) - 3, { size: 8, alpha: 0.6 }); // far off, dim
+  drawEx(ctx, sheet, "npc_friend", (ticks >> 5) & 1, 215, hillTop(BAD_FAR, 215) - 3, { size: 8, alpha: 0.8 }); // far off, a little dim
   drawHill(ctx, BAD_NEAR, mix("#2c5a46", "#0e2228", k), mix("#4a8a5e", "#1a3a3a", k));
   drawEx(ctx, sheet, "hero_pip", 0, 70, hillTop(BAD_NEAR, 70) - 8);
   // one bubble drifts from the hero toward the friend, and never arrives
