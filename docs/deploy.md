@@ -114,3 +114,8 @@ crontab -e   # add:
 It stops and asks for a human on: no upstream configured (`git branch -u origin/main`), tracked local edits on the box, a non-fast-forward
 (force-push), a failed rebuild, or a failed health check. On failure the log prints the exact rollback command (last known good commit).
 It never rolls back by itself. Watch with `tail -f /var/log/bubbleweb-autodeploy.log`.
+
+## Status
+
+Deployed 2026-11-26 on the Hetzner box at `/opt/bubbleweb/app`, served at `https://bubble.167.233.41.250.sslip.io/` (route added to the live and mirrored Caddyfile; the
+pre-change Caddyfile is kept on the box as `/opt/maasklei/Caddyfile.bak-bubble`). The cron entry and logrotate are installed; the repo is public, so no deploy key was needed.
