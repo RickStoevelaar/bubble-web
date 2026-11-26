@@ -1,3 +1,4 @@
+name: bubbleweb
 services:
   bubbleweb:
     build: .
