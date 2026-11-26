@@ -4,6 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Bubble Web</title>
+    <meta name="description" content="Two-player bubble-blowing platform game." />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- "black" (opaque bar, viewport below it): the layout handles the bottom/side insets but not a top inset -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Bubble Web" />
     <style>
       html,
       body {
@@ -49,6 +60,23 @@
         padding-bottom: env(safe-area-inset-bottom, 0px);
         padding-left: env(safe-area-inset-left, 0px);
         padding-right: env(safe-area-inset-right, 0px);
+      }
+      #install {
+        position: fixed;
+        left: calc(10px + env(safe-area-inset-left, 0px));
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        padding: 8px 14px;
+        font: bold 16px system-ui, sans-serif;
+        letter-spacing: 1px;
+        color: #10142a;
+        background: #bfe9ff;
+        border: 2px solid #eefaff;
+        border-bottom-color: #4a86b0;
+        border-radius: 10px;
+        touch-action: manipulation;
+      }
+      #install[hidden] {
+        display: none;
       }
       #join {
         position: absolute;
@@ -189,6 +217,7 @@
     <div id="deck"></div>
     <div id="safe" aria-hidden="true"></div>
     <div id="status" hidden></div>
+    <button id="install" type="button" hidden>INSTALL</button>
     <div id="join" hidden>
       <form id="join-form" autocomplete="off">
         <h1>Bubble Web</h1>

@@ -1,6 +1,6 @@
 import { createReadStream, realpathSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -8,12 +8,16 @@ const TYPES: Record<string, string> = {
   ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".wasm": "application/wasm",
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
 };
+
+/** Files the browser must revalidate on every load so a deploy is picked up (service worker script, manifest). */
+const NO_CACHE = new Set(["sw.js", "manifest.webmanifest"]);
 
 /**
  * Maps a request URL path to an absolute file path inside `root`, or null when
@@ -60,11 +64,13 @@ export function serveStatic(root: string, req: IncomingMessage, res: ServerRespo
     if (real !== realRoot && !real.startsWith(realRoot + sep)) return respond(res, 404, "not found");
     const st = statSync(real);
     if (!st.isFile()) return respond(res, 404, "not found");
-    res.writeHead(200, {
+    const headers: Record<string, string | number> = {
       "content-type": TYPES[extname(real).toLowerCase()] ?? "application/octet-stream",
       "content-length": st.size,
       "x-content-type-options": "nosniff",
-    });
+    };
+    if (NO_CACHE.has(basename(real))) headers["cache-control"] = "no-cache";
+    res.writeHead(200, headers);
     if (req.method === "HEAD") return void res.end();
     const stream = createReadStream(real);
     stream.on("error", () => res.destroy());

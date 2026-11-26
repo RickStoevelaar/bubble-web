@@ -35,6 +35,7 @@ import type { Screen } from "./screens/machine";
 import { planScreenLayout } from "./screens/plan";
 import { drawScores, fetchScores, matchOwn, turnPage, type OwnRun, type ScoresData } from "./screens/scores";
 import { drawTitle } from "./screens/title";
+import { installInstallButton, registerServiceWorker } from "./pwa";
 
 function wsUrl(): string {
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
@@ -358,11 +359,13 @@ function boot(): void {
     sampler = s;
   }
 
+  const installBtn = installInstallButton(window, el<HTMLButtonElement>("install"));
   const frame = (now: number): void => {
     sampler?.frame(now);
     deckView.render(touch.pressed);
     const game = flow.game;
     const screen = flow.screen;
+    installBtn.setScreenVisible(screen === "title");
     const playing = screen === "game" || screen === "gameover" || screen === "ending";
     const view = playing ? (game?.viewState(now) ?? null) : null;
     if (view) lastView = view;
@@ -424,3 +427,4 @@ function boot(): void {
 }
 
 boot();
+registerServiceWorker(window);
